@@ -4,9 +4,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-This repo is the **design stage** of a RAG Q&A system (LangGraph + Milvus DISKANN). There is no source code, `pyproject.toml`, test suite or git repo yet. Right now it holds:
+This repo is the **design stage** of a RAG Q&A system (LangGraph + Milvus DISKANN). P0 (skeleton, contracts, stubs; see `docs/开发计划.md` §3) is in progress, so there is no source code, `pyproject.toml` or test suite yet. The git repo is on `main`. Right now it holds:
 
-- 11 Chinese design docs (`*.md`). `总揽.md` is the entry point. It has the architecture, the LangGraph state and graph, the tech stack and the decision log (§7).
+- 12 Chinese design docs in `docs/`. `docs/总揽.md` is the entry point. It has the architecture, the LangGraph state and graph, the tech stack and the decision log (§7).
 - `config.yaml`: every tunable parameter for the whole system.
 - `prompts/v1/*.j2`: the real Jinja2 prompt templates.
 
@@ -31,7 +31,7 @@ Code blocks in the docs are drafts, but they have been executed. Keep it that wa
    `uv run --quiet --python 3.12 --with pyyaml==6.0.2 --with jinja2==3.1.6 python /tmp/check.py`
 3. Check YAML with a SafeLoader subclass that rejects duplicate keys.
 4. Check every doc for unbalanced code fences:
-   `for f in *.md; do n=$(grep -c '^[ \t]*```' "$f"); [ $((n % 2)) -ne 0 ] && echo "odd: $f"; done`
+   `for f in docs/*.md; do n=$(grep -c '^[ \t]*```' "$f"); [ $((n % 2)) -ne 0 ] && echo "odd: $f"; done`
    Inside a code block, never write three literal backticks. Use `` `{3,} `` or `"`" * 3`. This broke `后处理.md` once.
 5. Delete temp scripts afterwards.
 

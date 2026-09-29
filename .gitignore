@@ -10,3 +10,8 @@ eval/reports/
 
 # 模型权重
 models/
+
+# 会话规划文件（planning-with-files）
+task_plan.md
+findings.md
+progress.md
