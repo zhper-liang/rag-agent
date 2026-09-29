@@ -44,7 +44,11 @@ Each of these contracts spans several docs. Change one side and you must change 
 - **Chunk schema.** Defined in `文档切分.md` §4 and mirrored as Milvus fields in `向量化建库.md` §5. It is used by `检索与重排.md` §6, `上下文构造.md` and `评估与监控.md` §3.4.
   - `chunk_id` is `{doc_id}:v{version}:{seq:05d}`, so it is deterministic.
   - `doc_id` is 16 hex characters and must be regex-checked before it goes into any Milvus filter expression.
-  - Other fields: `tokens`, `section_idx`, `section_tokens`, `prev_id`/`next_id` (text and code only), `image_ids`, `related_ids`, `searchable`.
+  - Build and parse it only with `make_chunk_id` / `parse_chunk_id` (`文档切分.md` §4).
+  - Other fields: `tokens`, `section_idx`, `section_tokens`, `prev_id`/`next_id` (text and code only), `image_ids`, `related_ids`, `searchable`, `content_hash`.
+  - `content_hash` is the sha256 of the normalized `text` (`文档切分.md` §11). It is stored in Milvus and used for post-recall dedup (`检索与重排.md` §4.4). Duplicates within a doc and boilerplate get `searchable=false`. There is no `skip_index`.
+  - `ChunkFields` (`向量化建库.md` §5.1) must match the fields in `create_collection` one to one. `Hit` and `Expansion` (`检索与重排.md` §4.5) derive from it.
+- **Data models.** Every cross-module structure is a pydantic v2 `BaseModel`, and the doc definition matches the package's `models.py` word for word. Construct them with keyword arguments only. `RAGState` stays a TypedDict and holds `model_dump()` dicts.
   - `meta.overlap_chars` is the overlap between split parts. Context merge and eval alignment both strip it.
 - **`embed_text`** is the heading path plus the text. It is the input for both the dense vector and BM25. `text` has no prefix and is what the LLM sees.
 - **Filters.** User-influenced values reach Milvus expressions only through whitelist or regex checks.

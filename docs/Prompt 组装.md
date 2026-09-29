@@ -144,34 +144,32 @@ token 数用本地 tokenizer 估算并乘以 `context.token_safety_factor`，和
 ## 10. 输出结构
 
 ```python
-from dataclasses import dataclass, field
-from typing import Literal
+from typing import Annotated, Literal
+from pydantic import BaseModel, Field
 
-@dataclass
-class TextPart:
+class TextPart(BaseModel):
     text: str
     type: Literal["text"] = "text"
 
-@dataclass
-class ImagePart:
+class ImagePart(BaseModel):
     media_type: str            # image/jpeg
     data_b64: str
     chunk_id: str
     type: Literal["image"] = "image"
 
-@dataclass
-class Message:
-    role: Literal["user", "assistant"]
-    parts: list[TextPart | ImagePart]
+Part = Annotated[TextPart | ImagePart, Field(discriminator="type")]
 
-@dataclass
-class PromptPackage:
+class Message(BaseModel):
+    role: Literal["user", "assistant"]
+    parts: list[Part]
+
+class PromptPackage(BaseModel):
     scene: Literal["rag", "rag_empty", "chat"]
     system: str
     messages: list[Message]
     version: str               # prompt.version，记进日志
     est_input_tokens: int
-    meta: dict = field(default_factory=dict)   # 裁掉了几轮历史、图片是否读取失败等
+    meta: dict = Field(default_factory=dict)   # 裁掉了几轮历史、图片是否读取失败等
 ```
 
 渲染 rag 用户消息并切分图片：
@@ -194,10 +192,10 @@ def build_user_rag(env, blocks, question, standalone, scope_note, load_image) ->
     for i, seg in enumerate(re.split(rf"@@IMG:{nonce}:(\d+)@@", text)):
         if i % 2 == 0:
             if seg:
-                parts.append(TextPart(seg))
+                parts.append(TextPart(text=seg))
         elif (img := load_image(images[int(seg)])) is not None:   # 读取失败返回 None，只留说明文字
             parts.append(img)
-    return Message("user", parts)
+    return Message(role="user", parts=parts)
 ```
 
 ## 11. fallback
