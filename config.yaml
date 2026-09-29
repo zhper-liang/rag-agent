@@ -1,0 +1,309 @@
+# ragagent 全局配置
+# - 所有可调参数都集中在这里；各设计文档只说明含义，默认值以本文件为准。
+# - 密钥不写在这里：只写环境变量名（*_env），值放在环境变量里。
+# - Milvus 服务端参数（DISKANN 构建参数、mmap 等）在 milvus.yaml 里，不在本文件，见 向量化建库.md §6。
+# - 由 src/ragagent/config.py 加载并校验，未知字段直接报错。
+
+paths:
+  raw: data/raw
+  parsed: data/parsed
+  clean: data/clean
+  chunks: data/chunks
+  registry_db: data/registry.db       # 文档登记表（含 FTS5 标题索引）
+  session_db: data/sessions.db        # LangGraph checkpointer
+  feedback_db: data/feedback.db       # 用户点赞点踩
+  keep_versions: 2                    # 每个文档保留最近几个版本
+
+services:
+  milvus:
+    uri: http://127.0.0.1:19530
+    user_env: MILVUS_USER
+    password_env: MILVUS_PASSWORD
+    collection: rag_chunks            # 别名，重建时切换，见 向量化建库.md §8
+  embed:                              # 本地编码 / 重排服务，只监听本机
+    host: 127.0.0.1
+    port: 8001
+  # 大模型接入点和各场景的模型选择在下面的 llm 段
+
+# ───────── 离线：数据清洗（数据清洗.md）─────────
+ingest:
+  parse_routes:
+    mineru: [pdf, doc, docx, ppt, pptx, png, jpg, jpeg]
+    text: [md, markdown, txt]         # 不在路由里的后缀（如 xlsx）跳过
+  mineru:
+    base_url: https://mineru.net/api/v4
+    token_env: MINERU_TOKEN
+    model_version: vlm                # vlm / pipeline
+    is_ocr: false
+    enable_formula: true
+    enable_table: true
+    language: ch
+    batch_size: 50                    # 以官方上限为准
+    concurrency: 2                    # 同时进行的批次数
+    poll_interval_s: 5
+    timeout_s: 1800
+    retries: 3
+  clean:
+    repeat_page_ratio: 0.5            # 同一段短文本出现在超过该比例的页面就当页眉页脚删除
+    heading_demote_chars: 50          # 超过该字数且以句号结尾的“标题”降级为段落
+    table_max_cols: 20                # 展开后超过该列数保留 HTML
+    watermarks: []                    # 需要删除的水印文本
+  images:
+    min_side_px: 64                   # 短边小于该值丢弃
+    min_area_px: 10000
+    repeat_page_ratio: 0.3            # 同一张图（pHash 相同）出现在超过该比例的页面就丢弃
+    context_chars: 200                # 没有说明文字时，前后各取一个段落，每个最多这么多字
+    llm_description: false            # 图表用多模态 LLM 生成描述，默认关闭
+  quality:
+    min_block_chars: 5
+    garbled_ratio: 0.3
+    min_doc_chars: 50
+  dedup:
+    minhash_threshold: 0.9
+
+# ───────── 离线：文档切分（文档切分.md）─────────
+chunking:
+  tokenizer: BAAI/bge-m3
+  target_tokens: 400
+  max_tokens: 800
+  min_tokens: 64
+  overlap_tokens: 64                  # 只用于递归拆分
+  inline_code_tokens: 48              # 不超过该大小的代码块跟着正文走
+  lead_in_tokens: 80                  # 代码引导句的上限
+  path_max_depth: 4                   # 标题路径超过该层数时保留文档标题 + 最后 3 层
+  path_heading_chars: 50              # 标题路径里每个标题的最大字数
+  semantic:
+    enabled: true
+    break_z: -1.0                     # z ≤ 该值为语义断点
+    strong_z: 1.0                     # z ≥ 该值为语义强相关
+    min_units: 4
+    min_std: 0.02
+    early_flush_ratio: 0.5
+  dedup:
+    boilerplate_doc_count: 20         # 同一段文本出现在超过该数量的文档里就标记为模板
+
+# ───────── 离线：向量化建库（向量化建库.md）─────────
+index:
+  embed_model: BAAI/bge-m3            # Visualized-BGE 的文本底座
+  embed_weight: models/Visualized_m3.pth
+  dim: 1024
+  device: cuda
+  fp16: true
+  text_batch: 32
+  image_batch: 8
+  insert_batch: 500
+# ───────── 在线：用户问题预处理（用户问题预处理.md）─────────
+preprocess:                           # 模型、温度、超时在 llm.scenes.preprocess
+  max_question_chars: 2000
+  history:
+    turns: 3
+    answer_tokens: 300
+    total_tokens: 1500
+  scope:
+    fuzzy_threshold: 85
+    fts_candidates: 20
+    max_docs: 5
+    file_type_synonyms:               # 用户说法 → file_type
+      - {types: [pdf], words: [PDF]}
+      - {types: [doc, docx], words: [Word]}
+      - {types: [ppt, pptx], words: [PPT, 幻灯片, 演示文稿]}
+      - {types: [png, jpg, jpeg], words: [图片, 截图, 照片]}
+      - {types: [md], words: [Markdown, md]}
+      - {types: [txt], words: [文本文件, txt]}
+
+rewrite:                              # 模型、温度、超时在 llm.scenes.rewrite
+  max_queries: 3
+  hint_candidates: 5
+
+# ───────── 在线：检索与重排（检索与重排.md）─────────
+retrieval:
+  dense_top_k: 50
+  sparse_top_k: 50
+  search_list: 100                    # DISKANN 检索参数，必须 ≥ top_k
+  weights: {dense: 0.7, sparse: 0.3}
+  per_query_limit: 50
+  candidates: 30                      # 送进重排的数量
+  timeout_ms: 1000
+
+rerank:
+  model: BAAI/bge-reranker-v2-m3
+  max_length: 512
+  threshold: 0.3
+  per_doc_cap: 3
+  top_n: 8
+  timeout_ms: 2000
+
+expansion:
+  section_max_tokens: 1500            # 所在节不超过该值时整节取回；上下文构造用同一个值
+  images_per_chunk: 2                 # 附件图片
+  images_total: 4
+
+grade:
+  pass_score: 0.5
+  max_retries: 2
+
+# ───────── 在线：上下文构造（上下文构造.md）─────────
+context:
+  budget_tokens: 6000                 # 只算检索到的上下文
+  block_overhead_tokens: 30
+  token_safety_factor: 1.1            # 上线前按 上下文构造.md §3 校准
+  image:
+    max_images: 2                     # 图片命中最多发几张原图
+    tokens_per_image: 1200
+    max_side_px: 1024
+    jpeg_quality: 85
+
+# ───────── 在线：Prompt 组装（Prompt 组装.md）─────────
+prompt:
+  dir: prompts
+  version: v1                         # 模板目录 prompts/{version}/，记进日志
+  supplement_heading: "**补充说明（以下内容不来自资料）**"   # 模板和后处理共用
+  history_turns: 3
+  history_answer_tokens: 800
+  history_total_tokens: 3000
+  max_input_tokens: 12000             # 不含图片
+  fallback_sources: 3                 # fallback 回答里列出的最接近来源数
+
+# ───────── 在线：大模型生成（大模型生成.md）─────────
+# 统一走 OpenAI 兼容接口。base_url / model 待填；key 只写环境变量名，值放环境变量或不提交的 .env。
+# 启动时校验：base_url、model 不能为空，api_key_env 对应的环境变量必须存在；非本机地址必须是 https。
+llm:
+  endpoints:
+    main:
+      base_url: "https://api.xiaomimimo.com/v1"                    # 待填
+      model: "mimo-v2.6-pro"                       # 待填
+      api_key_env: LLM_MAIN_KEY
+      vision: true                    # 是否支持图片输入；false 时原图降级为说明文字
+      structured_output: function_calling   # function_calling / json_schema / json_mode
+      strip_think: false              # 正文里有 <think>…</think> 时打开，推流时过滤
+      max_concurrency: 8              # 本进程内同时发出的请求数
+      extra_body: {}                  # 服务商特有参数，原样透传
+    main_backup:
+      base_url: "https://api.xiaomimimo.com/v1"
+      model: "mimo-v2.6-pro"
+      api_key_env: LLM_MAIN_BACKUP_KEY
+      vision: true
+      structured_output: function_calling
+      strip_think: false
+      max_concurrency: 8
+      extra_body: {}
+    small:
+      base_url: "https://api.xiaomimimo.com/v1"
+      model: "mimo-v2.6-flash"
+      api_key_env: LLM_SMALL_KEY
+      vision: true
+      structured_output: function_calling
+      strip_think: false
+      max_concurrency: 16
+      extra_body: {}
+    small_backup:
+      base_url: "https://api.xiaomimimo.com/v1"
+      model: "mimo-v2.6-flash"
+      api_key_env: LLM_SMALL_BACKUP_KEY
+      vision: true
+      structured_output: function_calling
+      strip_think: false
+      max_concurrency: 16
+      extra_body: {}
+  scenes:
+    generate:                         # rag / rag_empty
+      primary: main
+      fallback: main_backup
+      temperature: 0.2
+      max_tokens: 2048
+      first_token_timeout_s: 10       # 每次尝试等首个 token 的时间
+      pre_first_token_budget_s: 30    # 首个 token 之前的总时长上限（含重试和切换）
+      total_timeout_s: 90
+      retries: 2                      # 429 / 5xx / 连接错误时同一模型的重试次数
+      backoff_s: [1, 2]
+    chat:
+      primary: small
+      fallback: small_backup
+      temperature: 0.5
+      max_tokens: 512
+      first_token_timeout_s: 10
+      pre_first_token_budget_s: 30
+      total_timeout_s: 30
+      retries: 2
+      backoff_s: [1, 2]
+    preprocess:                       # 不重试：主模型失败或超时直接切备用，再失败按规则降级
+      primary: small
+      fallback: small_backup
+      temperature: 0
+      timeout_s: 3
+    rewrite:
+      primary: small
+      fallback: small_backup
+      temperature: 0
+      timeout_s: 3
+    eval:                             # 评测出题、RAGAS 打分；建议换成和生成模型不同的模型
+      primary: main
+      fallback: main_backup
+      temperature: 0
+      timeout_s: 60
+
+# ───────── 在线：后处理（后处理.md）─────────
+postprocess:
+  support_threshold: 0.3              # 重排分数低于该值算“不支持”；用评测集校准
+  min_claim_chars: 8                  # 句子太短不做支持度校验
+  max_pairs: 64                       # 每轮最多打分的“句子-窗口”对数
+  rerank_max_length: 512
+  verify_timeout_s: 3                 # 超时则引用全部保持 unverified，final 照常发
+  warn_ratio: 0.5                     # 不支持的句子占比超过该值时加整体提示
+  notices:
+    unsupported: "部分内容未能在资料中核实，请以原文为准。"
+    truncated: "回答过长已截断。"
+    interrupted: "回答中断，内容可能不完整。"
+  incomplete_suffix: "（回答不完整）"   # 截断 / 中断的回答写进历史时追加
+
+# ───────── 评估（评估与监控.md）─────────
+eval:
+  dataset: eval/datasets/v1.jsonl
+  baselines_dir: eval/baselines
+  reports_dir: eval/reports
+  generate:
+    counts: {single: 300, multi_chunk: 60, unanswerable: 40, multi_turn: 40, chat: 20, clarify: 20, scoped: 20}
+    max_per_doc: 5                    # 每个文档最多出几题
+    min_chunk_tokens: 80
+    min_quote_chars: 20
+    max_overlap: 0.5                  # 问题和原文片段的字二元组 Jaccard 上限
+    dedup_similarity: 0.95
+    max_regen: 2
+    unanswerable_max_score: 0.3       # 没有答案题：当前检索最高分不低于该值就丢弃
+  eval_collection_distractor_ratio: 0.05   # 临时 collection 里额外抽的干扰文档比例
+  ragas_check_samples: 30             # 验证 RAGAS 中文打分效果的样本数
+  gates:
+    quick:
+      recall_at_8_drop_pp: 2
+      chat_misroute_max: 0.02
+      p95_latency_rise: 0.2
+    full:
+      faithfulness_drop: 0.03
+      citation_support_drop_pp: 3
+      unanswerable_drop_pp: 5
+
+# ───────── 监控（评估与监控.md）─────────
+monitor:
+  langfuse:
+    enabled: true
+    host: https://jp.cloud.langfuse.com # EU；US 区域为 https://us.cloud.langfuse.com
+    public_key_env: LANGFUSE_PUBLIC_KEY
+    secret_key_env: LANGFUSE_SECRET_KEY
+    mask: true                        # 只上报元数据；抽样保留原文见 logging.prompt_sample_rate
+  metrics:
+    path: /metrics                    # 只在内网开放
+  feedback:
+    reason_max_chars: 500
+    rate_limit_per_session_min: 20
+  alerts:                             # 由 scripts/gen_alerts.py 生成 Prometheus 规则
+    ttft_p95_s: {value: 6, for: 10m}
+    error_ratio: {value: 0.02, for: 5m}
+    llm_fallback_ratio: {value: 0.1, for: 15m}
+    degraded_ratio: {value: 0.05, for: 15m}
+    milvus_rss_gb: {value: 10, for: 10m}
+    gpu_mem_ratio: {value: 0.9, for: 10m}
+    downvote_ratio: {value: 0.3, window: 1h, min_count: 20}
+
+logging:
+  retain_days: 30                     # 原始问题等日志的保留天数
+  prompt_sample_rate: 0               # 完整 Prompt / 回答的抽样记录比例，调试时再打开

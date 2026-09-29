@@ -1,0 +1,77 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
+## Current state
+
+This repo is the **design stage** of a RAG Q&A system (LangGraph + Milvus DISKANN). There is no source code, `pyproject.toml`, test suite or git repo yet. Right now it holds:
+
+- 11 Chinese design docs (`*.md`). `总揽.md` is the entry point. It has the architecture, the LangGraph state and graph, the tech stack and the decision log (§7).
+- `config.yaml`: every tunable parameter for the whole system.
+- `prompts/v1/*.j2`: the real Jinja2 prompt templates.
+
+Talk to the user in Chinese. Docs are also written in Chinese.
+
+Don't invent build or test commands. When the code skeleton is created, the planned layout is `src/ragagent/{ingest,index,retrieval,preprocess,context,prompt,llm,postprocess,graph,api,monitor}` plus `eval/`. The docs describe it in each one's "目录与模块" section.
+
+## How design work is done here
+
+- **Discuss first, then write.** For any design change or new doc, present the plan and defaults, ask the open decisions, and write only after the user confirms. Don't ask whether to discuss first; go straight into the discussion.
+- **When the user's choice affects an earlier doc**, say so and confirm before editing. Then update every affected doc, the decision table in `总揽.md` §7 and `config.yaml` in the same pass.
+- **Parameters go only in `config.yaml`.** Docs explain what a parameter means and point to its config key. Don't paste YAML snippets with values into docs.
+  - Secrets appear only as `*_env` variable names. Every such name must also be listed in `.env.example`. The real `.env` is gitignored.
+  - The exception is Milvus server settings (DISKANN build params, mmap). They live in Milvus's own `milvus.yaml`, documented in `向量化建库.md` §6.
+
+## Verifying doc code
+
+Code blocks in the docs are drafts, but they have been executed. Keep it that way when you edit them.
+
+1. Extract the fenced `python` blocks from the md file with a regex and `exec` them. Stub any external SDKs (openai, pymilvus, langchain).
+2. Run the extraction script from `/tmp` with a pinned temporary env. System Python is 3.14, but the project targets 3.12. For example:
+   `uv run --quiet --python 3.12 --with pyyaml==6.0.2 --with jinja2==3.1.6 python /tmp/check.py`
+3. Check YAML with a SafeLoader subclass that rejects duplicate keys.
+4. Check every doc for unbalanced code fences:
+   `for f in *.md; do n=$(grep -c '^[ \t]*```' "$f"); [ $((n % 2)) -ne 0 ] && echo "odd: $f"; done`
+   Inside a code block, never write three literal backticks. Use `` `{3,} `` or `"`" * 3`. This broke `后处理.md` once.
+5. Delete temp scripts afterwards.
+
+Also note that `Prompt 组装.md` has a space in its filename. Quote it in shell commands, and link to it as `Prompt%20组装.md`.
+
+## Cross-file invariants
+
+Each of these contracts spans several docs. Change one side and you must change the others.
+
+- **Chunk schema.** Defined in `文档切分.md` §4 and mirrored as Milvus fields in `向量化建库.md` §5. It is used by `检索与重排.md` §6, `上下文构造.md` and `评估与监控.md` §3.4.
+  - `chunk_id` is `{doc_id}:v{version}:{seq:05d}`, so it is deterministic.
+  - `doc_id` is 16 hex characters and must be regex-checked before it goes into any Milvus filter expression.
+  - Other fields: `tokens`, `section_idx`, `section_tokens`, `prev_id`/`next_id` (text and code only), `image_ids`, `related_ids`, `searchable`.
+  - `meta.overlap_chars` is the overlap between split parts. Context merge and eval alignment both strip it.
+- **`embed_text`** is the heading path plus the text. It is the input for both the dense vector and BM25. `text` has no prefix and is what the LLM sees.
+- **Filters.** User-influenced values reach Milvus expressions only through whitelist or regex checks.
+  - `build_expr` in `检索与重排.md` §4.2 does this.
+  - Soft filters come from `scope` in the question and are resolved to doc_ids via the registry DB, never taken from LLM text.
+  - Hard filters come from API params.
+- **Prompt tags.** The `RESERVED` tag list in `escape_tags` (`Prompt 组装.md` §5) must include every tag used in `prompts/v1/*.j2`.
+  - Escape only those tags. Never HTML-escape, because it breaks code in answers.
+  - Jinja runs with autoescape off, `StrictUndefined` on, and the `esc` and `attr` filters.
+- **Supplement heading.** `prompt.supplement_heading` is used both by `system_rag.j2` and by the answer parsing in `后处理.md` §3.2.
+- **Citations.**
+  - `[n]` refers to a `ContextBlock.cite` (`上下文构造.md` §8).
+  - Postprocess never edits the streamed text. It only emits a `final` event whose offsets are in UTF-16 units.
+  - It also saves a `plain` copy with citations stripped. Prompt assembly uses `plain` for history.
+- **Graph flow.** Defined in `总揽.md` §4.2.
+  - Every answering path ends at `postprocess`, and `clarify` goes through it too.
+  - Grade is a conditional edge after `rerank`.
+  - `rewrite` first drops the soft filters before calling the rewrite LLM.
+- **LLM access.** Everything uses OpenAI-compatible endpoints, defined in `llm.endpoints`. Each scene (generate, chat, preprocess, rewrite, eval) in `llm.scenes` names one primary and one fallback endpoint.
+  - Retries happen only before the first visible token, and a first-token timeout switches endpoints immediately.
+  - Preprocess and rewrite never retry. They fall back once, then degrade by rules.
+- **Privacy.** Langfuse is the cloud service and receives metadata only. `_mask` in `评估与监控.md` §9.1 keeps a whitelist of fields and masks every other string. The eval set is LLM-generated, and its gold answers are stored as `doc_id` plus `quote`, never as chunk_id.
+
+## Fixed constraints
+
+- GPU: RTX 4060 with 8 GB. It runs Visualized-BGE (bge-m3 base, 1024 dimensions) and bge-reranker-v2-m3 locally.
+- Scale: designed for 10M chunks. Milvus resident memory must stay at or below 10 GB, which is why PQ and cache ratios are reduced and mmap is on.
+- No department or classification ACL. Excel is not supported. MinerU (cloud API) parses PDF, Word, PPT and images.
+
+使用skil：planning-with-files-zh记录任务进度

@@ -1,0 +1,10 @@
+{%- if scope_note %}
+<scope>{{ scope_note | esc }}</scope>
+{% endif -%}
+<documents>
+</documents>
+本次没有检索到相关资料。请先告诉用户资料库中没有找到相关内容，然后按“资料不够时”的规则，在补充说明标题下用你自己的知识回答；如果无法回答就直接说明。
+<question>{{ question | esc }}</question>
+{%- if standalone %}
+<standalone>{{ standalone | esc }}</standalone>
+{%- endif %}
