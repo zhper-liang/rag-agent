@@ -33,6 +33,21 @@ class EmbedResponse(BaseModel):
     vectors: list[list[float]]
 
 
+class RerankRequest(BaseModel):
+    query: str
+    passages: list[str]
+    max_length: int             # 取 rerank.max_length；query + passage 超出部分截断
+
+
+class RerankPairsRequest(BaseModel):
+    pairs: list[tuple[str, str]]
+    max_length: int
+
+
+class RerankResponse(BaseModel):
+    scores: list[float]         # 经过 sigmoid，0~1，顺序与输入一致
+
+
 class ChunkFields(BaseModel):
     model_config = ConfigDict(extra="forbid")   # 字段名拼错直接报错，不静默丢弃
 

@@ -29,6 +29,7 @@ CONTRACTS = {
     "ragagent.ingest.chunking.models": ["ChunkType", "CHUNK_ID_RE", "make_chunk_id", "parse_chunk_id",
                                         "Chunk", "Draft", "Section", "Unit"],
     "ragagent.index.models": ["EmbedItem", "EmbedTextRequest", "EmbedImageRequest", "EmbedResponse",
+                              "RerankRequest", "RerankPairsRequest", "RerankResponse",
                               "ChunkFields", "ChunkRow", "to_row"],
     "ragagent.index.schema": ["create_collection"],
     "ragagent.retrieval.models": ["Hit", "ExpansionRole", "Expansion", "RetrievalResult"],
