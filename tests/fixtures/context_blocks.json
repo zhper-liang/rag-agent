@@ -1,0 +1,63 @@
+[
+  {
+    "cite": 1,
+    "doc_id": "3f2a9c1e7b4d8a60",
+    "title": "Milvus 部署手册",
+    "section_path": "第2章 部署 > 2.3 配置",
+    "page_start": 12,
+    "page_end": 13,
+    "text": "Milvus 的主配置文件是 milvus.yaml，位于容器的 /milvus/configs 目录。修改前先备份原文件，改完需要重启所有组件才会生效。使用 DISKANN 索引时，必须把 queryNode.enableDisk 设为 true，否则加载集合会报错。磁盘索引的数据放在 localStorage.path 指定的目录，建议挂载 NVMe 盘。\n\n```bash\ndocker compose up -d\ndocker compose ps\n```",
+    "chunk_ids": [
+      "3f2a9c1e7b4d8a60:v1:00001",
+      "3f2a9c1e7b4d8a60:v1:00002",
+      "3f2a9c1e7b4d8a60:v1:00003"
+    ],
+    "hit_ids": [
+      "3f2a9c1e7b4d8a60:v1:00002",
+      "3f2a9c1e7b4d8a60:v1:00003"
+    ],
+    "score": 0.93,
+    "images": [
+      {
+        "chunk_id": "3f2a9c1e7b4d8a60:v1:00004",
+        "image_path": "clean/3f2a9c1e7b4d8a60/v1/images/fig2-1.jpg",
+        "caption": "图 2-1 部署架构",
+        "send_original": true
+      }
+    ]
+  },
+  {
+    "cite": 2,
+    "doc_id": "3f2a9c1e7b4d8a60",
+    "title": "Milvus 部署手册",
+    "section_path": "第2章 部署",
+    "page_start": 11,
+    "page_end": 11,
+    "text": "# 第2章 部署\n\n本章介绍单机版 Milvus 的部署步骤。\n\n## 2.1 环境要求\n\nDocker 20.10 以上，内存不少于 16 GB。",
+    "chunk_ids": [
+      "3f2a9c1e7b4d8a60:v1:00000"
+    ],
+    "hit_ids": [
+      "3f2a9c1e7b4d8a60:v1:00000"
+    ],
+    "score": 0.62,
+    "images": []
+  },
+  {
+    "cite": 3,
+    "doc_id": "b7e1d2c3a4f50618",
+    "title": "Milvus 运维手册",
+    "section_path": "第5章 运维 > 5.2 升级",
+    "page_start": -1,
+    "page_end": -1,
+    "text": "升级前确认新版本与现有索引类型兼容，DISKANN 从 2.3 起支持 mmap。",
+    "chunk_ids": [
+      "b7e1d2c3a4f50618:v2:00003"
+    ],
+    "hit_ids": [
+      "b7e1d2c3a4f50618:v2:00003"
+    ],
+    "score": 0.58,
+    "images": []
+  }
+]

@@ -1,0 +1,39 @@
+[
+  {
+    "intent": "rag",
+    "standalone_question": "Milvus 使用 DISKANN 索引时需要改哪些配置？",
+    "extra_queries": [
+      "queryNode.enableDisk 配置",
+      "DISKANN milvus.yaml 设置"
+    ],
+    "scope": {
+      "doc_titles": [
+        "Milvus 部署手册"
+      ],
+      "file_types": [
+        "pdf"
+      ]
+    },
+    "clarify_question": null
+  },
+  {
+    "intent": "chat",
+    "standalone_question": "谢谢，明白了",
+    "extra_queries": [],
+    "scope": {
+      "doc_titles": [],
+      "file_types": []
+    },
+    "clarify_question": null
+  },
+  {
+    "intent": "clarify",
+    "standalone_question": "它怎么配置？",
+    "extra_queries": [],
+    "scope": {
+      "doc_titles": [],
+      "file_types": []
+    },
+    "clarify_question": "你想了解哪个组件的配置：Milvus、MinIO 还是 etcd？"
+  }
+]

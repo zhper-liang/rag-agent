@@ -1,0 +1,46 @@
+[
+  {
+    "type": "heading",
+    "text": "2.3 配置",
+    "level": 2,
+    "page": 12,
+    "image_path": null,
+    "meta": {}
+  },
+  {
+    "type": "paragraph",
+    "text": "Milvus 的主配置文件是 milvus.yaml，位于容器的 /milvus/configs 目录。修改前先备份原文件，改完需要重启所有组件才会生效。使用 DISKANN 索引时，必须把 queryNode.enableDisk 设为 true，否则加载集合会报错。磁盘索引的数据放在 localStorage.path 指定的目录，建议挂载 NVMe 盘。",
+    "level": 0,
+    "page": 12,
+    "image_path": null,
+    "meta": {}
+  },
+  {
+    "type": "table",
+    "text": "| 参数 | 默认值 | 说明 |\n|---|---|---|\n| queryNode.enableDisk | false | 开启后才能加载 DISKANN |",
+    "level": 0,
+    "page": 12,
+    "image_path": null,
+    "meta": {
+      "table_caption": "表 2-1 磁盘索引参数"
+    }
+  },
+  {
+    "type": "code",
+    "text": "docker compose up -d\ndocker compose ps",
+    "level": 0,
+    "page": 13,
+    "image_path": null,
+    "meta": {
+      "lang": "bash"
+    }
+  },
+  {
+    "type": "image",
+    "text": "图 2-1 部署架构",
+    "level": 0,
+    "page": 13,
+    "image_path": "images/fig2-1.jpg",
+    "meta": {}
+  }
+]

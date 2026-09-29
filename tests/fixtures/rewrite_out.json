@@ -1,0 +1,6 @@
+{
+  "queries": [
+    "milvus.yaml 磁盘索引参数",
+    "enableDisk 开启方法"
+  ]
+}
