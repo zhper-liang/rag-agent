@@ -4,15 +4,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-This repo is the **design stage** of a RAG Q&A system (LangGraph + Milvus DISKANN). P0 (skeleton, contracts, stubs; see `docs/开发计划.md` §3) is in progress, so there is no source code, `pyproject.toml` or test suite yet. The git repo is on `main`. Right now it holds:
+This repo is a RAG Q&A system (LangGraph + Milvus DISKANN). P0 (skeleton, contracts, fixtures, stubs, Milvus; see `docs/开发计划.md` §3) is done; the next step is the four parallel lines L1–L4 (`开发计划.md` §4). The git repo is on `main`. It holds:
 
-- 12 Chinese design docs in `docs/`. `docs/总揽.md` is the entry point. It has the architecture, the LangGraph state and graph, the tech stack and the decision log (§7).
-- `config.yaml`: every tunable parameter for the whole system.
+- 12 Chinese design docs in `docs/`. `docs/总揽.md` is the entry point. It has the architecture, the LangGraph state and graph, the tech stack, the directory tree (§6) and the decision log (§7).
+- `config.yaml`: every tunable parameter for the whole system. `src/ragagent/config.py` models it and validates it at startup.
 - `prompts/v1/*.j2`: the real Jinja2 prompt templates.
+- `src/ragagent/{ingest,index,retrieval,preprocess,context,prompt,llm,postprocess,graph,api,monitor}`: so far only the contract models (`models.py`, `preprocess/schema.py`, `graph/state.py`) and `index/schema.py`. Each doc's "目录与模块" section says what goes where. `eval/` is still empty.
+- `tests/`: contract tests (every doc model must match its `models.py` definition via AST), fixtures in `tests/fixtures/`, and three stub services in `tests/stubs/` (embed + rerank, OpenAI-compatible LLM).
+- `docker-compose.milvus.yml` + `milvus.yaml`: Milvus 2.5.18 standalone. MinIO credentials come from `.env`.
 
 Talk to the user in Chinese. Docs are also written in Chinese.
 
-Don't invent build or test commands. When the code skeleton is created, the planned layout is `src/ragagent/{ingest,index,retrieval,preprocess,context,prompt,llm,postprocess,graph,api,monitor}` plus `eval/`. The docs describe it in each one's "目录与模块" section.
+Commands (Python 3.12 via uv; don't invent others):
+
+- Tests: `make test` (= `uv run pytest`).
+- Milvus: `docker compose -f docker-compose.milvus.yml up -d` / `down`. Data is in `volumes/` (gitignored).
+- Milvus smoke: `uv run --env-file .env python scripts/milvus_smoke.py`. It uses its own `rag_chunks_smoke` collection.
+- Milvus measurements (向量化建库 §6.4): `uv run --env-file .env python scripts/milvus_bench.py {mmap,recall}`. They take minutes and release other loaded collections.
+- Stubs standalone: `uv run python -m tests.stubs.embed_server` (also serves rerank), `tests.stubs.rerank_server` (8002), `tests.stubs.llm_server` (8003). All take `--port`; the embed stub defaults to `services.embed.port`.
 
 ## How design work is done here
 
