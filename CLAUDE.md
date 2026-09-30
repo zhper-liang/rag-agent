@@ -18,7 +18,7 @@ Talk to the user in Chinese. Docs are also written in Chinese.
 Commands (Python 3.12 via uv; don't invent others):
 
 - Tests: `make test` (= `uv run pytest`).
-- Milvus: `docker compose -f docker-compose.milvus.yml up -d` / `down`. Data is in `volumes/` (gitignored).
+- Milvus: `docker compose -f docker-compose.milvus.yml up -d` / `down`. etcd, MinIO and Milvus metadata are in `volumes/` (gitignored). Milvus's local cache (`localStorage.path`: mmap and DiskANN files) is in the named volume `milvus_local`, because on Docker Desktop bind mounts go through virtiofs and make mmap loads about 80x slower (向量化建库 §6.4).
 - Milvus smoke: `uv run --env-file .env python scripts/milvus_smoke.py`. It uses its own `rag_chunks_smoke` collection.
 - Milvus measurements (向量化建库 §6.4): `uv run --env-file .env python scripts/milvus_bench.py {mmap,recall}`. They take minutes and release other loaded collections.
 - Stubs standalone: `uv run python -m tests.stubs.embed_server` (also serves rerank), `tests.stubs.rerank_server` (8002), `tests.stubs.llm_server` (8003). All take `--port`; the embed stub defaults to `services.embed.port`.

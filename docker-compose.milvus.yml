@@ -51,6 +51,8 @@ services:
     volumes:
       - ${DOCKER_VOLUME_DIRECTORY:-.}/volumes/milvus:/var/lib/milvus
       - ./milvus.yaml:/milvus/configs/milvus.yaml:ro
+      # localStorage.path（mmap、DiskANN 本地文件）放 named volume：bind mount 在 Docker Desktop 上走 virtiofs，mmap 很慢
+      - milvus_local:/milvus_local
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:9091/healthz"]
       interval: 30s
@@ -63,6 +65,9 @@ services:
     depends_on:
       - "etcd"
       - "minio"
+
+volumes:
+  milvus_local:
 
 networks:
   default:

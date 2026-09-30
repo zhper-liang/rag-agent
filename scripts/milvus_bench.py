@@ -23,7 +23,7 @@ from pymilvus import DataType, Function, FunctionType, MilvusClient
 
 CFG = yaml.safe_load((Path(__file__).resolve().parents[1] / "config.yaml").read_text(encoding="utf-8"))
 CONTAINER = "milvus-standalone"
-MMAP_DIR = "/var/lib/milvus/data/mmap"
+MMAP_DIR = "/milvus_local/data/mmap"      # milvus.yaml localStorage.path + mmap/
 
 
 def connect() -> MilvusClient:

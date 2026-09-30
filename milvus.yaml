@@ -88,7 +88,9 @@ localStorage:
   # Local path to where vector data are stored during a search or a query to avoid repetitve access to MinIO or S3 service.
   # Caution: Changing this parameter after using Milvus for a period of time will affect your access to old data.
   # It is recommended to change this parameter before starting Milvus for the first time.
-  path: /var/lib/milvus/data/
+  # 本地缓存（mmap 文件、DiskANN 索引文件），可从 MinIO 重建。放在 named volume 上，不走 Docker Desktop 的 bind mount（virtiofs）：
+  # 在 virtiofs 上 sparse 倒排索引 mmap 加载慢约 80 倍（向量化建库 §6.4）。Milvus 启动时会清空这个目录，所以指向卷里的子目录而不是挂载点。
+  path: /milvus_local/data/
 
 # Related configuration of MinIO/S3/GCS or any other service supports S3 API, which is responsible for data persistence for Milvus.
 # We refer to the storage service as MinIO/S3 in the following description for simplicity.
