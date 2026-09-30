@@ -3,6 +3,7 @@
 
 # 运行数据（原始文件、解析结果、chunk、SQLite）
 data/
+volumes/
 
 # 评测集和报告里有资料原文片段（见 评估与监控.md §12）
 eval/datasets/
