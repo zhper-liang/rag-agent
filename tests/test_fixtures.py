@@ -1,6 +1,5 @@
 """夹具与契约测试（开发计划.md §3.3）：改字段、改约定就红。"""
 
-import ast
 import hashlib
 import json
 import re
@@ -14,6 +13,7 @@ from ragagent.context.models import ContextBlock
 from ragagent.ingest.chunking.models import Chunk, parse_chunk_id
 from ragagent.ingest.models import Block
 from ragagent.preprocess.schema import Preprocessed, Rewrite
+from ragagent.prompt.env import RESERVED
 from ragagent.retrieval.models import Hit
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -182,18 +182,8 @@ def test_answer_shapes():
 
 # ---- Prompt 标签
 
-def _reserved_from_doc() -> set[str]:
-    # escape_tags 在 L3 实现前以 Prompt 组装.md §5 为准；实现后改成导入代码里的 RESERVED
-    text = (ROOT / "docs" / "Prompt 组装.md").read_text(encoding="utf-8")
-    for block in re.findall(r"^```python\n(.*?)^```", text, re.S | re.M):
-        for node in ast.parse(block).body:
-            if isinstance(node, ast.Assign) and getattr(node.targets[0], "id", None) == "RESERVED":
-                return set(ast.literal_eval(node.value).split("|"))
-    raise AssertionError("Prompt 组装.md 里找不到 RESERVED")
-
-
 def test_reserved_tags_cover_templates():
     used = set()
     for tpl in (ROOT / "prompts" / "v1").glob("*.j2"):
         used |= {m.lower() for m in re.findall(r"</?\s*([A-Za-z_]+)", tpl.read_text(encoding="utf-8"))}
-    assert used and used <= _reserved_from_doc()
+    assert used and used <= set(RESERVED.split("|"))

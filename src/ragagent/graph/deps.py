@@ -1,0 +1,36 @@
+"""D-003 A：StateGraph(context_schema=Deps)，节点 (state, runtime)。
+
+依赖不进入 RAGState/checkpoint。Runtime.context 保存请求依赖；
+Runtime.stream_writer 输出事件。测试可替换客户端、计数器及 write。
+"""
+from __future__ import annotations
+
+import asyncio
+from collections.abc import Callable
+from dataclasses import dataclass, field
+from typing import Any
+
+from ragagent.config import Config
+from ragagent.llm.structured import structured_call
+from ragagent.prompt.env import build_env
+
+
+@dataclass
+class Deps:
+    cfg: Config
+    count: Callable[[str], int]
+    clients: dict[tuple[str, str], Any] = field(default_factory=dict)
+    sems: dict[str, asyncio.Semaphore] = field(default_factory=dict)
+    write: Callable[[dict], None] | None = None
+    milvus: Any | None = None
+    embed_client: Any | None = None
+    rerank_client: Any | None = None
+    registry: Any | None = None
+    structured_call: Callable = structured_call
+    prompt_env: Any = field(default_factory=build_env)
+
+
+def emit(runtime, event: dict) -> None:
+    """一个事件只写一次；API 的 custom stream 接收 Runtime.stream_writer。"""
+    writer = runtime.context.write or runtime.stream_writer
+    writer(event)
