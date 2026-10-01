@@ -20,7 +20,7 @@ def ndcg_at_k(ranked: Sequence[str], gold: Sequence[set[str]], k: int) -> float:
     """二元片段相关度；一个片段的替代 chunk 不重复获益。
 
     同一排名命中多个独立 gold 时每片段各贡献一份 gain。理想排名通过
-    相同候选覆盖关系贪心选取最大新增片段数，避免跨段替代 ID 重复获益。
+    相同候选覆盖关系的精确子集动态规划，避免跨段替代 ID 重复获益。
     每个 gold 片段单独出现时退化为常规 binary nDCG。
     """
     if not gold or k <= 0:
@@ -34,15 +34,25 @@ def ndcg_at_k(ranked: Sequence[str], gold: Sequence[set[str]], k: int) -> float:
             covered.update(matched)
         return total
 
-    remaining = set().union(*gold)
-    ideal, covered = [], set()
-    while remaining and len(ideal) < k:
-        cid = max(sorted(remaining), key=lambda c: sum(i not in covered and c in g for i, g in enumerate(gold)))
-        covered.update(i for i, g in enumerate(gold) if cid in g)
-        ideal.append(cid)
-        remaining.remove(cid)
-    denom = dcg(ideal)
-    return min(1.0, dcg(list(ranked)) / denom) if denom else 0.0
+    # 精确子集DP：重叠候选的贪心IDCG可能低估分母，不能钳制结果掩盖。
+    if len(gold) > 20:
+        raise ValueError("exact fragment nDCG supports at most 20 gold quotes per question")
+    masks = {sum(1 << i for i, targets in enumerate(gold) if cid in targets)
+             for cid in set().union(*gold)}
+    states, ideal = {0: 0.0}, 0.0
+    for rank in range(1, min(k, len(gold)) + 1):
+        next_states = {}
+        for covered, value in states.items():
+            for mask in masks:
+                added = mask & ~covered
+                if added:
+                    new, score = covered | mask, value + added.bit_count() / math.log2(rank + 1)
+                    next_states[new] = max(next_states.get(new, 0.0), score)
+                    ideal = max(ideal, score)
+        states = next_states
+        if not states:
+            break
+    return dcg(list(ranked)) / ideal if ideal else 0.0
 
 
 def percentile(values: Sequence[float], q: float) -> float:

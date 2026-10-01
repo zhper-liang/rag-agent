@@ -66,3 +66,21 @@ def test_same_chunk_covers_multiple_quotes():
     assert ndcg_at_k(["a"], [{"a"}, {"a"}], 8) == 1
     assert percentile([1, 2, 3], .5) == 2
     assert percentile([1, 2, 3], .95) == pytest.approx(2.9)
+
+
+def test_overlapping_quotes_use_exact_idcg_not_greedy_clamp():
+    # a覆盖0..3；b覆盖0,1,4；c覆盖2,3,5。IDCG精确遍历6种排列。
+    # a先出虽gain=4最大，但b,c合起来的后续覆盖可能在其他布局更优。
+    import itertools
+    gold = [{'a','b'}, {'a','b'}, {'a','c'}, {'a','c'}, {'b'}, {'c'}]
+    def dcg(order):
+        seen, value = set(), 0
+        for rank, cid in enumerate(order, 1):
+            ids = {i for i,g in enumerate(gold) if cid in g}
+            value += len(ids-seen) / math.log2(rank+1)
+            seen |= ids
+        return value
+    ideal = max(dcg(p) for p in itertools.permutations(['a','b','c']))
+    for order in itertools.permutations(['a','b','c']):
+        assert ndcg_at_k(order, gold, 8) == pytest.approx(dcg(order)/ideal)
+    assert recall_at_k(['a','a'], gold, 2) == 4/6
