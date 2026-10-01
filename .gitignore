@@ -21,3 +21,13 @@ __pycache__/
 task_plan.md
 findings.md
 progress.md
+.planning/
+
+# 四线协作的运行文件（协议和任务书要提交，见 claude-codex/README.md §2）
+claude-codex/状态.md
+claude-codex/消息.md
+claude-codex/待决.md
+claude-codex/.locks/
+
+# 真实语料（只读，不提交）
+真实内容按量读取/
