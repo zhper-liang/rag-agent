@@ -213,7 +213,7 @@ def build_user_rag(env, blocks, question, standalone, scope_note, load_image) ->
 
 ## 13. LangGraph 中的位置
 
-- Prompt 组装不单独占一个节点，在 generate 节点内部调用：`pkg = assemble(state, cfg)`，然后交给 LLM 客户端。
+- Prompt 组装不单独占一个节点，在 generate 节点内部调用：`pkg = assemble(state, cfg, count=runtime.context.count, env=runtime.context.prompt_env)`（D-003 A 的依赖注入；count 沿用 §7 的计数参数），然后交给 LLM 客户端。
 - `PromptPackage` 不写进 state；只把 `version`、`est_input_tokens`、`meta` 写进 `state["gen_meta"]`，供监控使用。
 - fallback 节点调用 `render_fallback(state, cfg)` 得到回答文本。
 
