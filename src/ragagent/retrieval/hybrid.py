@@ -48,7 +48,7 @@ def dense_one(client, coll: str, qvec: list[float], expr: str, cfg) -> list[dict
     ))
 
 
-async def hybrid_many(client, coll: str, queries: list[str], vectors: list[list[float]], expr: str, cfg):
+async def hybrid_many(client, coll: str, queries: list[str], vectors: list[list[float]], expr: str, cfg, *, metrics=None):
     if len(queries) != len(vectors):
         raise ValueError("查询向量数量不一致")
 
@@ -59,6 +59,8 @@ async def hybrid_many(client, coll: str, queries: list[str], vectors: list[list[
             return result, False
         except Exception as exc:
             log.warning("hybrid failed_type=%s; retry dense once", type(exc).__name__)
+            if metrics is not None:
+                metrics.degraded.labels(kind="hybrid").inc()
             result = await asyncio.wait_for(asyncio.to_thread(dense_one, client, coll, vector, expr, cfg),
                                             cfg.timeout_ms / 1000)
             return result, True
@@ -97,7 +99,7 @@ async def retrieve(queries: list[str], filters: dict | None, deps):
     if deps.milvus is None:
         raise RetrievalUnavailable("Milvus 客户端未配置")
     results, dense_only = await hybrid_many(deps.milvus, cfg.services.milvus.collection, queries, vectors,
-                                           expr, cfg.retrieval)
+                                           expr, cfg.retrieval, metrics=deps.metrics)
     timings["hybrid"] = round((perf_counter() - start) * 1000)
     selected = merge(results, cfg.retrieval.candidates)
     start = perf_counter()

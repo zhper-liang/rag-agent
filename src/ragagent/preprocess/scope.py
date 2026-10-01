@@ -55,7 +55,7 @@ def match_titles(titles, registry, cfg) -> tuple[list[str], list[str]]:
     return sorted(ids), matched
 
 
-def resolve_scope(scope, registry, cfg, hard=None):
+def resolve_scope(scope, registry, cfg, hard=None, *, metrics=None):
     """返回 (soft_filters, scope_note, 生效scope_doc_ids)。硬过滤冲突则整套soft丢弃。"""
     file_types = set()
     for saying in scope.file_types:
@@ -66,11 +66,15 @@ def resolve_scope(scope, registry, cfg, hard=None):
     if scope.doc_titles:
         if registry is None:
             log.warning("scope registry unavailable; skip soft filters")
+            if metrics is not None:
+                metrics.degraded.labels(kind="preprocess").inc()
             return None, None, []
         try:
             ids, titles = match_titles(scope.doc_titles, registry, cfg)
         except (sqlite3.Error, OSError):
             log.warning("scope registry unavailable; skip soft filters")
+            if metrics is not None:
+                metrics.degraded.labels(kind="preprocess").inc()
             return None, None, []
     soft = {}
     if ids:

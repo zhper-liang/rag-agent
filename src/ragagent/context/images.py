@@ -26,7 +26,7 @@ def resolve_image_path(image_path: str, clean_root: str | Path = "data/clean") -
     return target
 
 
-def image_available(image_path: str, clean_root: str | Path = "data/clean") -> bool:
+def image_available(image_path: str, clean_root: str | Path = "data/clean", *, metrics=None) -> bool:
     target = resolve_image_path(image_path, clean_root)
     try:
         with Image.open(target) as image:
@@ -34,10 +34,12 @@ def image_available(image_path: str, clean_root: str | Path = "data/clean") -> b
         return True
     except (OSError, ValueError, Image.DecompressionBombError):
         log.warning("image unavailable; use caption only")
+        if metrics is not None:
+            metrics.degraded.labels(kind="image").inc()
         return False
 
 
-def prepare_image(image_path: str, cfg) -> bytes | None:
+def prepare_image(image_path: str, cfg, *, metrics=None) -> bytes | None:
     """供 Prompt 读文件时使用：按 EXIF 转正、长边缩小、RGB JPEG；不写运行文件。"""
     target = resolve_image_path(image_path, cfg.paths.clean)
     try:
@@ -49,6 +51,8 @@ def prepare_image(image_path: str, cfg) -> bytes | None:
             return out.getvalue()
     except (OSError, ValueError, Image.DecompressionBombError):
         log.warning("image read failed; use caption only")
+        if metrics is not None:
+            metrics.degraded.labels(kind="image").inc()
         return None
 
 

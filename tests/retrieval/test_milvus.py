@@ -19,6 +19,8 @@ from ragagent.index.schema import create_collection
 from ragagent.retrieval.expand import expand
 from ragagent.retrieval.hybrid import retrieve
 from ragagent.retrieval.rerank import rerank
+from ragagent.retrieval.pipeline import run_pipeline
+from ragagent.monitor.metrics import MonitorMetrics
 from tests.context.helpers import chunk, config, link
 from tests.stubs.embed_server import create_app, vector
 
@@ -74,6 +76,16 @@ def test_real_milvus_hybrid_rerank_expand_context():
                 assert hits and result.top_score > 0 and not result.degraded
                 assert any(expansions.values()) and blocks
                 assert rows[42]["chunk_id"] in {cid for b in blocks for cid in b.chunk_ids}
+                async def prepared(scene, eps, schema, messages):
+                    return {"standalone_question": query}, scene.primary
+                deps.structured_call = prepared
+                deps.metrics = MonitorMetrics(endpoints=cfg.llm.endpoints)
+                state = await run_pipeline(query, deps)
+                assert state["retrieval"]["grade"] == "pass" and state["context_blocks"]
+                assert state["retrieval"]["context_usage"]["total"] <= cfg.context.budget_tokens
+                print("L2_REAL_RUNTIME_QUICK_OK", {"top_score": state["retrieval"]["top_score"],
+                      "route": state["retrieval"]["route"], "total_ms": state["retrieval"]["total_ms"],
+                      "timings_ms": state["retrieval"]["timings_ms"], "context_usage": state["retrieval"]["context_usage"]})
                 print("L2_PIPELINE_OK", {"collection": coll, "candidates": len(candidates),
                       "top_score": result.top_score, "hits": [h.chunk_id for h in hits],
                       "expansions": sum(map(len, expansions.values())), "context_blocks": len(blocks),

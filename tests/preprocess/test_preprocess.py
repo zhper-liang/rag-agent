@@ -180,3 +180,15 @@ def test_history_uses_saved_plain_not_raw_citations_and_recovers_intent():
     assert history_turns(messages) == [{'question': '上一问', 'answer': '正文'}]
     assert previous_intent(messages) == 'clarify'
     assert previous_intent([{'role': 'assistant', 'content': '答', 'additional_kwargs': {'intent': 'chat'}}]) == 'chat'
+
+
+def test_structured_optional_monitor_kwargs_and_legacy_four_args_compatible():
+    async def run():
+        seen = []
+        async def call(scene, eps, schema, messages, *, scene_name=None, metrics=None):
+            seen.append((scene_name, metrics))
+            return {'standalone_question': 'q'}, scene.primary
+        deps = Deps(config(), len, structured_call=call)
+        result = await preprocess_question('q', [], None, deps)
+        assert not result['preprocess_degraded'] and seen == [('preprocess', None)]
+    asyncio.run(run())

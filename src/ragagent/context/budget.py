@@ -28,7 +28,7 @@ def context_usage(chosen, roles, send_image, cfg) -> dict[str, int]:
     return usage
 
 
-def fill(hits: list[dict], exp: dict[str, list[dict]], cfg):
+def fill(hits: list[dict], exp: dict[str, list[dict]], cfg, *, metrics=None):
     """返回 (chosen, roles, attachments, send_image)，exp 是契约中的扁平 role 列表。"""
     chosen, roles, send_image = {}, {}, set()
     ranked = sorted(hits, key=rank_score, reverse=True)
@@ -63,7 +63,7 @@ def fill(hits: list[dict], exp: dict[str, list[dict]], cfg):
         if h["type"] == "image":
             resolve_image_path(h["image_path"], cfg.paths.clean)
             if (len(send_image) < cfg.context.image.max_images
-                    and image_available(h["image_path"], cfg.paths.clean)
+                    and image_available(h["image_path"], cfg.paths.clean, metrics=metrics)
                     and take([h], "hit", image=cid)):
                 kept.append(h)
                 continue

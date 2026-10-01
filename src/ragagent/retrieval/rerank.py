@@ -47,6 +47,8 @@ async def rerank(question: str, candidates, deps, retrieval: dict | RetrievalRes
         except Exception as exc:
             log.warning("rerank failed_type=%s; use fusion", type(exc).__name__)
             result.degraded = True
+            if deps.metrics is not None:
+                deps.metrics.degraded.labels(kind="rerank").inc()
             selected = [{**h, "rerank_score": None} for h in sorted(hits, key=lambda h: (-h["score"], h["chunk_id"]))[:cfg.rerank.top_n]]
     else:
         selected = []
