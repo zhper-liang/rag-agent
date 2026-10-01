@@ -9,6 +9,7 @@ import asyncio
 import os
 from weakref import WeakKeyDictionary
 
+import httpx
 from langchain_openai import ChatOpenAI
 
 _CLIENTS: WeakKeyDictionary = WeakKeyDictionary()
@@ -20,13 +21,18 @@ def build_client(ep, scene) -> ChatOpenAI:
     loop = asyncio.get_running_loop()
     cache = _CLIENTS.setdefault(loop, {})
     if key not in cache:
+        timeout = getattr(scene, 'total_timeout_s', None) or scene.timeout_s
+        # ChatOpenAI默认httpx池按base_url/timeout全局缓存，会跨loop重用已关闭连接。
+        # 显式拥有两个HTTP客户端，保证本模块宣称的loop隔离与可重启。
         cache[key] = ChatOpenAI(
+            http_client=httpx.Client(timeout=timeout),
+            http_async_client=httpx.AsyncClient(timeout=timeout),
             base_url=ep.base_url,
             api_key=os.environ[ep.api_key_env],
             model=ep.model,
             temperature=scene.temperature,
             max_tokens=getattr(scene, "max_tokens", None),
-            timeout=getattr(scene, "total_timeout_s", None) or scene.timeout_s,
+            timeout=timeout,
             max_retries=0,
             stream_usage=True,
             extra_body=ep.extra_body or None,

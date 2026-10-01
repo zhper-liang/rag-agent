@@ -69,3 +69,46 @@ def test_client_cache_and_sdk_retry_disabled(monkeypatch):
         assert a is not build_client(ep, oneshot(timeout=4))
         await close_clients()
     asyncio.run(run())
+
+
+def test_clients_close_rebuild_and_isolate_event_loops(monkeypatch):
+    """显式HTTPX池必须隔离loop；默认ChatOpenAI全局缓存会重用已关闭池。"""
+    monkeypatch.setenv('L3_STUB_KEY', 'stub')
+    with serve(create_app()) as base:
+        clients = []
+        async def run():
+            scene, eps = oneshot(), endpoints(base)
+            first = build_client(eps['primary'], scene)
+            assert first is build_client(eps['primary'], scene)
+            clients.append(first)
+            result, endpoint = await structured_call(scene, eps, Preprocessed, [HumanMessage('合成问题')])
+            assert result is not None and endpoint == 'primary'
+            await close_clients()
+            assert first.http_async_client.is_closed and first.http_client.is_closed
+            second = build_client(eps['primary'], scene)
+            assert second is not first
+            result, endpoint = await structured_call(scene, eps, Preprocessed, [HumanMessage('合成问题')])
+            assert result is not None and endpoint == 'primary'
+            await close_clients()
+        asyncio.run(run())
+        asyncio.run(run())
+        assert clients[0].http_async_client is not clients[1].http_async_client
+        assert [c['model'] for c in httpx.get(base + '/_stub/calls').json()] == ['primary'] * 4
+
+
+def test_structured_optional_metrics_success_and_fallback(monkeypatch):
+    from prometheus_client import generate_latest
+    from ragagent.monitor.metrics import MonitorMetrics
+    monkeypatch.setenv('L3_STUB_KEY', 'stub')
+    with serve(create_app()) as base:
+        metrics = MonitorMetrics(endpoints=['primary', 'fallback'])
+        httpx.post(base + '/_stub/script', json={'model': 'primary', 'steps': [{'status': 400}]}).raise_for_status()
+        async def run():
+            result, endpoint = await structured_call(oneshot(), endpoints(base), Preprocessed,
+                [HumanMessage('合成问题')], scene_name='preprocess', metrics=metrics)
+            assert result is not None and endpoint == 'fallback'
+            await close_clients()
+        asyncio.run(run())
+        wire = generate_latest(metrics.registry).decode()
+        assert 'rag_llm_calls_total{endpoint="primary",outcome="failed",scene="preprocess"} 1.0' in wire
+        assert 'rag_llm_calls_total{endpoint="fallback",outcome="fallback",scene="preprocess"} 1.0' in wire

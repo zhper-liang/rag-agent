@@ -49,4 +49,10 @@ async def build_final(state, cfg, rerank_pairs, *, count=len, message_id=None):
                  coverage=covered / len(body) if body else 0., covered=covered,
                  uncovered=len(body) - covered, warned=warned, verify_degraded=degraded,
                  verify_ms=round((time.perf_counter() - start) * 1000))
+    valid = sum(c['state'] in ('ok', 'unsupported', 'unverified') for c in citations)
+    supported = sum(c['state'] == 'ok' for c in citations)
+    checked = sum(c['state'] in ('ok', 'unsupported') for c in citations)
+    stats.update(citation_validity=valid / len(citations) if citations else None,
+                 citation_support=supported / checked if checked else None,
+                 checked_citations=checked)
     return event, make_plain(answer, sents, status, cfg.postprocess), stats

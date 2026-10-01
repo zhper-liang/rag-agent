@@ -9,7 +9,7 @@ from ragagent.llm.client import build_client, endpoint_semaphore
 log = logging.getLogger(__name__)
 
 
-async def structured_call(scene, eps, schema, messages):
+async def structured_call(scene, eps, schema, messages, *, scene_name=None, metrics=None):
     """主备各尝试一次；失败/超时/None/校验失败均切换，最终返回 (None, None)。
 
 取消直接向上传播。日志只含接入点名称和异常类型，绝不记录消息正文。
@@ -30,7 +30,12 @@ async def structured_call(scene, eps, schema, messages):
                     return result
 
             result = await asyncio.wait_for(invoke(), timeout=scene.timeout_s)
+            if metrics is not None:
+                metrics.llm_calls.labels(scene=scene_name or "preprocess", endpoint=name,
+                                         outcome="ok" if name == scene.primary else "fallback").inc()
             return result, name
         except Exception as exc:
+            if metrics is not None:
+                metrics.llm_calls.labels(scene=scene_name or "preprocess", endpoint=name, outcome="failed").inc()
             log.warning("structured_call endpoint=%s failed_type=%s", name, type(exc).__name__)
     return None, None

@@ -9,6 +9,7 @@ import asyncio
 from collections.abc import Callable
 from dataclasses import dataclass, field
 from typing import Any
+from pathlib import Path
 
 from ragagent.config import Config
 from ragagent.llm.structured import structured_call
@@ -27,7 +28,13 @@ class Deps:
     rerank_client: Any | None = None
     registry: Any | None = None
     structured_call: Callable = structured_call
-    prompt_env: Any = field(default_factory=build_env)
+    prompt_env: Any = None
+    metrics: Any = None
+    message_id: str | None = None
+
+    def __post_init__(self):
+        if self.prompt_env is None:
+            self.prompt_env = build_env(Path(self.cfg.prompt.dir) / self.cfg.prompt.version)
 
 
 def emit(runtime, event: dict) -> None:
