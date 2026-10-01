@@ -36,6 +36,13 @@ def _embed_text(draft, title, cfg):
     return '\n'.join([prefix]+extra+[body])
 
 
+def _service_encode(texts):
+    # 懒调用，仅真正需要语义断点时访问服务；默认路径不静默关闭语义。
+    from ragagent.index.embedder import Embedder
+    with Embedder() as emb:
+        return emb.text(texts)
+
+
 def run_chunk(doc: CleanDocument, *, cfg=None, count=None, encode=None) -> list[Chunk]:
     """可注入 cfg/count/encode 用于性质测试；生产默认使用 bge-m3 与配置。"""
     cfg = cfg or load_config().chunking
@@ -44,6 +51,8 @@ def run_chunk(doc: CleanDocument, *, cfg=None, count=None, encode=None) -> list[
         count = count_tokens
     if not 0 < cfg.target_tokens <= cfg.max_tokens:
         raise ValueError('必须满足 0 < target_tokens <= max_tokens')
+    if encode is None and cfg.semantic.enabled:
+        encode = _service_encode
     blocks = prepare_blocks(doc.blocks)
     root = build_tree(blocks,count)
     headings = {b.meta['_section_idx']:b for b in blocks if b.type=='heading'}
