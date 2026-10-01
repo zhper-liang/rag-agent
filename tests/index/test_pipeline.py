@@ -99,3 +99,18 @@ def test_recreated_collection_does_not_trust_old_manifest(tmp_path, monkeypatch)
         result = run_index(cfg=cfg, registry=registry, client=client, emb=emb,
                            collection='l1_test', wait=False)
         assert result['documents'] == 1 and result['chunks'] == len(parts)
+
+
+@pytest.mark.parametrize('status', ['empty','duplicate','unsupported'])
+def test_final_nonsearchable_clean_status_removes_old_manifest_and_vectors(tmp_path,monkeypatch,status):
+    monkeypatch.setattr('ragagent.index.pipeline.ensure_collection', lambda *_: False)
+    cfg,registry,doc,_=prepare(tmp_path)
+    with registry:
+        client,emb=Client(),Encoder()
+        assert run_index(cfg=cfg,registry=registry,client=client,emb=emb,collection='l1_test',wait=False)['documents']==1
+        registry.set_status(doc.doc_id,status)
+        result=run_index(cfg=cfg,registry=registry,client=client,emb=emb,collection='l1_test',wait=False)
+        assert result['deleted']==1 and result['documents']==0
+        assert registry.get(doc.doc_id)['status']==status
+        assert registry.conn.execute('SELECT count(*) FROM index_manifest').fetchone()[0]==0
+        assert client.calls[-2][2] == f'doc_id == "{doc.doc_id}"'

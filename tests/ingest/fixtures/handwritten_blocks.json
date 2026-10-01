@@ -1,0 +1,82 @@
+[
+  {
+    "type": "heading",
+    "text": "部署手册",
+    "level": 1,
+    "page": 1,
+    "image_path": null,
+    "meta": {}
+  },
+  {
+    "type": "paragraph",
+    "text": "零层级是普通正文。",
+    "level": 0,
+    "page": 1,
+    "image_path": null,
+    "meta": {}
+  },
+  {
+    "type": "list",
+    "text": "- 步骤一\n- 步骤二",
+    "level": 0,
+    "page": 1,
+    "image_path": null,
+    "meta": {}
+  },
+  {
+    "type": "table",
+    "text": "| 型号 | 参数 | 参数 |\n| --- | --- | --- |\n| 型号 | 速度 | 容量 |\n| M3 | 10 | 20 |",
+    "level": 0,
+    "page": 2,
+    "image_path": "images/table.png",
+    "meta": {
+      "format": "markdown",
+      "has_header": true,
+      "columns": 3,
+      "table_caption": "表一：参数",
+      "table_footnote": "注：测试"
+    }
+  },
+  {
+    "type": "image",
+    "text": "流程图说明",
+    "level": 0,
+    "page": 2,
+    "image_path": "images/flow.png",
+    "meta": {}
+  },
+  {
+    "type": "image",
+    "text": "第二图说明",
+    "level": 0,
+    "page": 2,
+    "image_path": "images/flow2.png",
+    "meta": {}
+  },
+  {
+    "type": "equation",
+    "text": "\\frac{a}{b}",
+    "level": 0,
+    "page": 3,
+    "image_path": "images/equation.png",
+    "meta": {}
+  },
+  {
+    "type": "code",
+    "text": "```python\nprint(\"hello\")\n```",
+    "level": 0,
+    "page": 3,
+    "image_path": null,
+    "meta": {
+      "language": "python"
+    }
+  },
+  {
+    "type": "paragraph",
+    "text": "未知块保留文字",
+    "level": 0,
+    "page": 3,
+    "image_path": null,
+    "meta": {}
+  }
+]

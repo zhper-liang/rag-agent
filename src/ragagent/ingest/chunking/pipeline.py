@@ -64,7 +64,7 @@ def run_chunk(doc: CleanDocument, *, cfg=None, count=None, encode=None) -> list[
             doc_id=doc.doc_id,version=doc.version,seq=seq,type=d.type,text=d.text,
             embed_text=_embed_text(d,doc.title,cfg),content_hash=content_hash(d.text),tokens=count(d.text),
             section_path=d.section_path,section_idx=d.section_idx,section_tokens=d.section_tokens,
-            page_start=min(pages) if pages else None,page_end=max(pages) if pages else None,meta=d.meta))
+            page_start=min(pages) if pages else None,page_end=max((b.meta.get('page_end', b.page) for b in d.blocks if b.page is not None), default=None),meta=d.meta))
     for i,c in enumerate(chunks):
         c.prev_id = chunks[i-1].chunk_id if i else None
         c.next_id = chunks[i+1].chunk_id if i+1 < len(chunks) else None

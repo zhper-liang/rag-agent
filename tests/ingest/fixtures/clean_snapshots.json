@@ -1,0 +1,267 @@
+{
+  "encoding": [
+    {
+      "type": "paragraph",
+      "text": "ABC 中文换行",
+      "level": 0,
+      "page": null,
+      "image_path": null,
+      "meta": {}
+    },
+    {
+      "type": "code",
+      "text": "```\n  Ａ​\n```",
+      "level": 0,
+      "page": null,
+      "image_path": null,
+      "meta": {}
+    },
+    {
+      "type": "equation",
+      "text": "\\frac{Ａ}{ B }",
+      "level": 0,
+      "page": null,
+      "image_path": null,
+      "meta": {}
+    },
+    {
+      "type": "list",
+      "text": "- 一级\n  - 二级",
+      "level": 0,
+      "page": null,
+      "image_path": null,
+      "meta": {}
+    },
+    {
+      "type": "table",
+      "text": "| 表 | 空 |\n| --- | --- |\n| 值 | |",
+      "level": 0,
+      "page": null,
+      "image_path": null,
+      "meta": {}
+    }
+  ],
+  "headings": [
+    {
+      "type": "heading",
+      "text": "第一章 起始",
+      "level": 1,
+      "page": null,
+      "image_path": null,
+      "meta": {}
+    },
+    {
+      "type": "heading",
+      "text": "第一节 概述",
+      "level": 2,
+      "page": null,
+      "image_path": null,
+      "meta": {}
+    },
+    {
+      "type": "heading",
+      "text": "一、方法",
+      "level": 2,
+      "page": null,
+      "image_path": null,
+      "meta": {}
+    },
+    {
+      "type": "heading",
+      "text": "1. 总览",
+      "level": 1,
+      "page": null,
+      "image_path": null,
+      "meta": {}
+    },
+    {
+      "type": "heading",
+      "text": "1.1 设计",
+      "level": 2,
+      "page": null,
+      "image_path": null,
+      "meta": {}
+    },
+    {
+      "type": "heading",
+      "text": "1.1.1 细节",
+      "level": 3,
+      "page": null,
+      "image_path": null,
+      "meta": {}
+    },
+    {
+      "type": "heading",
+      "text": "（一）子级",
+      "level": 4,
+      "page": null,
+      "image_path": null,
+      "meta": {}
+    },
+    {
+      "type": "heading",
+      "text": "无编号",
+      "level": 1,
+      "page": null,
+      "image_path": null,
+      "meta": {}
+    },
+    {
+      "type": "paragraph",
+      "text": "这其实是一段超过十字的完整句子。",
+      "level": 0,
+      "page": null,
+      "image_path": null,
+      "meta": {}
+    }
+  ],
+  "repeat": [
+    {
+      "type": "paragraph",
+      "text": "正文不同1",
+      "level": 0,
+      "page": 1,
+      "image_path": null,
+      "meta": {}
+    },
+    {
+      "type": "paragraph",
+      "text": "正文不同2",
+      "level": 0,
+      "page": 2,
+      "image_path": null,
+      "meta": {}
+    },
+    {
+      "type": "paragraph",
+      "text": "正文不同3",
+      "level": 0,
+      "page": 3,
+      "image_path": null,
+      "meta": {}
+    }
+  ],
+  "toc": [
+    {
+      "type": "paragraph",
+      "text": "正文完整内容",
+      "level": 0,
+      "page": 2,
+      "image_path": null,
+      "meta": {}
+    }
+  ],
+  "tables": [
+    {
+      "type": "table",
+      "text": "| A | B |\n| --- | --- |\n| 1 | 2 |\n| 3 | 4 |\n| 5 | 6 |",
+      "level": 0,
+      "page": 1,
+      "image_path": null,
+      "meta": {
+        "has_header": true,
+        "table_caption": "表一",
+        "page_end": 3,
+        "table_footnote": "脚注"
+      }
+    }
+  ],
+  "equations": [
+    {
+      "type": "equation",
+      "text": "\\frac{a}{b}+(c)",
+      "level": 0,
+      "page": null,
+      "image_path": null,
+      "meta": {}
+    },
+    {
+      "type": "equation",
+      "text": "\\frac{a}{b",
+      "level": 0,
+      "page": null,
+      "image_path": null,
+      "meta": {
+        "latex_invalid": true
+      }
+    },
+    {
+      "type": "equation",
+      "text": "\\{a\\}",
+      "level": 0,
+      "page": null,
+      "image_path": null,
+      "meta": {}
+    }
+  ],
+  "ppt": [
+    {
+      "type": "heading",
+      "text": "演示",
+      "level": 1,
+      "page": null,
+      "image_path": null,
+      "meta": {}
+    },
+    {
+      "type": "heading",
+      "text": "第一页",
+      "level": 2,
+      "page": 1,
+      "image_path": null,
+      "meta": {}
+    },
+    {
+      "type": "paragraph",
+      "text": "页面正文",
+      "level": 0,
+      "page": 1,
+      "image_path": null,
+      "meta": {}
+    },
+    {
+      "type": "heading",
+      "text": "第二页",
+      "level": 2,
+      "page": 2,
+      "image_path": null,
+      "meta": {}
+    }
+  ],
+  "noise": [
+    {
+      "type": "paragraph",
+      "text": "有效正文",
+      "level": 0,
+      "page": null,
+      "image_path": null,
+      "meta": {}
+    },
+    {
+      "type": "equation",
+      "text": "---",
+      "level": 0,
+      "page": null,
+      "image_path": null,
+      "meta": {}
+    }
+  ],
+  "markdown_anchor_toc": [
+    {
+      "type": "heading",
+      "text": "合成维护手册",
+      "level": 1,
+      "page": null,
+      "image_path": null,
+      "meta": {}
+    },
+    {
+      "type": "paragraph",
+      "text": "这里是需要保留的正文。",
+      "level": 0,
+      "page": null,
+      "image_path": null,
+      "meta": {}
+    }
+  ]
+}

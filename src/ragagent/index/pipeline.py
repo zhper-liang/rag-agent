@@ -38,7 +38,8 @@ def run_index(chunk_dir: str | Path | None = None, *, cfg: Config | None = None,
         version = emb.version  # 模型服务不可达时不改任何文档状态
         for record in registry.list_documents():
             doc_id, v = record['doc_id'], record['version']
-            if record['status'] == 'deleted':
+            if record['status'] in ('deleted', 'empty', 'duplicate', 'unsupported'):
+                # 清洗的终态不可检索；不能留下此前成功版本的幽灵向量。
                 delete_document(client, coll, doc_id)
                 with registry.conn:
                     registry.conn.execute('DELETE FROM index_manifest WHERE doc_id=? AND collection_name=?',

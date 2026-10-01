@@ -22,7 +22,8 @@ def attach_images(chunks, blocks, doc, cfg, count):
         context = re.sub(r'\[图: [\s\S]*?\]\n\n','',anchor.text)
         sentences = [s.strip() for s in re.split(r'(?<=[。！？!?])',context) if s.strip()]
         caption = b.text
-        text = caption + (('\n'+sentences[-1]) if sentences else '')
+        context = b.meta.get('context') or (sentences[-1] if sentences else '')
+        text = '\n'.join(dict.fromkeys(t for t in (caption, context) if t))
         text = hard_cut(text,cfg.max_tokens,count)[0] if text else ''
         cid = make_chunk_id(doc.doc_id,doc.version,len(chunks))
         image = Chunk(chunk_id=cid,doc_id=doc.doc_id,version=doc.version,seq=len(chunks),type='image',

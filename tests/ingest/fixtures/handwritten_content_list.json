@@ -1,0 +1,67 @@
+[
+  {
+    "type": "text",
+    "text": "部署手册",
+    "text_level": 1,
+    "page_idx": 0
+  },
+  {
+    "type": "text",
+    "text": "零层级是普通正文。",
+    "text_level": 0,
+    "page_idx": 0
+  },
+  {
+    "type": "list",
+    "list_items": [
+      "- 步骤一",
+      "- 步骤二"
+    ],
+    "page_idx": 0
+  },
+  {
+    "type": "table",
+    "table_body": "<table><tr><th rowspan=\"2\">型号</th><th colspan=\"2\">参数</th></tr><tr><td>速度</td><td>容量</td></tr><tr><td>M3</td><td>10</td><td>20</td></tr></table>",
+    "table_caption": [
+      "表一：参数"
+    ],
+    "table_footnote": [
+      "注：测试"
+    ],
+    "page_idx": 1,
+    "img_path": "images/table.png"
+  },
+  {
+    "type": "image",
+    "img_caption": [
+      "流程图说明"
+    ],
+    "img_path": "images/flow.png",
+    "page_idx": 1
+  },
+  {
+    "type": "image",
+    "image_caption": [
+      "第二图说明"
+    ],
+    "img_path": "images/flow2.png",
+    "page_idx": 1
+  },
+  {
+    "type": "equation",
+    "text": "\\frac{a}{b}",
+    "page_idx": 2,
+    "img_path": "images/equation.png"
+  },
+  {
+    "type": "code",
+    "code_body": "print(\"hello\")",
+    "language": "python",
+    "page_idx": 2
+  },
+  {
+    "type": "unknown",
+    "text": "未知块保留文字",
+    "page_idx": 2
+  }
+]
