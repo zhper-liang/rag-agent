@@ -168,3 +168,53 @@ def test_concurrent_evaluation_keeps_failed_case_and_input_order():
     assert [r['id'] for r in report['cases']] == [c['id'] for c in cases]
     assert report['cases'][1]['status'] == 'failed'
     assert report['metrics']['recall_at_8'] is None
+
+
+def test_generation_failure_is_not_successful_fallback_or_chat():
+    from ragagent.config import Config
+    cfg = Config.model_validate(yaml.safe_load(Path('config.yaml').read_text()))
+    cases = [fixture_dataset()[i] for i in (0, 3, 4)]
+    fixture = FixtureBackend()
+    async def backend(case, tier):
+        state = await fixture(case, tier)
+        return {**state, 'answer': '', 'route': 'fallback', 'unanswerable_handled': True,
+                'gen_meta': {'status': 'failed', 'scene': 'fallback',
+                             'attempts': [{'error': 'TimeoutError'}]}}
+    async def forbidden(*args):
+        pytest.fail('generation failures must not invoke the judge or scorer')
+    report = asyncio.run(evaluate(cases, fixture_chunks(), backend, tier='full', cfg=cfg,
+        collection='l4_fixture', config_hash='x', mode='fixture', score=forbidden,
+        no_answer_judge=forbidden))
+    assert report['failed'] == 3
+    assert all(r['status'] == 'failed' for r in report['cases'])
+    assert report['cases'][1]['unanswerable_rate'] is None
+    assert report['metrics']['unanswerable_rate'] is None
+    assert report['metrics']['faithfulness'] is None
+    assert report['cases'][0]['generation_error_types'] == ['TimeoutError']
+    assert 'citation_validity_rate' in report['cases'][0]['missing_metrics']
+
+
+def test_missing_non_gate_citation_metric_blocks_baseline(tmp_path, monkeypatch):
+    import eval.run as runner
+    raw = yaml.safe_load(Path('config.yaml').read_text())
+    raw['eval']['baselines_dir'] = str(tmp_path / 'baselines')
+    raw['eval']['reports_dir'] = str(tmp_path / 'reports')
+    config = tmp_path / 'config.yaml'
+    config.write_text(yaml.safe_dump(raw))
+    original = runner.evaluate
+    async def missing(*args, **kwargs):
+        report = await original(*args, **kwargs)
+        row = next(r for r in report['cases'] if r['id'] == 'fixture-single')
+        row['citation_validity_rate'] = None
+        # 对已生成报告也必须校验required_metrics，不能只依赖status或六项gate。
+        row['required_metrics'].append('citation_validity_rate')
+        return report
+    monkeypatch.setattr(runner, 'evaluate', missing)
+    args = SimpleNamespace(fixture=True, fixture_regression=False, tier='full',
+        config=str(config), update_baseline=True, states_output=None, concurrency=1)
+    assert asyncio.run(runner._run(args)) == 1
+    assert not (tmp_path / 'baselines' / 'fixtures' / 'full.json').exists()
+    report = json.loads(next((tmp_path / 'reports' / 'fixtures').glob('*.json')).read_text())
+    assert all(g['status'] == 'pass' for g in report['gates'] + report['baseline_stability'])
+    assert report['validation'] == {'first_complete': False, 'second_complete': False}
+    assert report['baseline_updated'] is False

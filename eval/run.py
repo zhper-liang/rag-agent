@@ -118,6 +118,11 @@ async def evaluate(dataset, chunks, backend, *, tier, cfg, collection, config_ha
         row = {"id": case["id"], "status": "ok", "intent_accuracy": float(intent == expected["intent"]),
                "chat_misroute": float(intent == "chat") if expected["intent"] == "rag" else None,
                "required_metrics": []}
+        meta = result.get("gen_meta") or {}
+        generation_failed = tier == "full" and meta.get("status") == "failed"
+        if generation_failed:
+            row.update(status="failed", generation_status="failed",
+                       generation_error_types=[a["error"] for a in meta.get("attempts", []) if a.get("error")])
         rt = result.get("retrieval", {})
         row["latency_s"] = (rt.get("total_ms", elapsed * 1000) / 1000 if mode == "fixture" or tier == "quick" else result.get("eval_latency_s", elapsed))
         for stage, duration in rt.get("timings_ms", {}).items():
@@ -139,10 +144,10 @@ async def evaluate(dataset, chunks, backend, *, tier, cfg, collection, config_ha
                        scope_recall=overlap / len(expected_scope) if expected_scope else 0,
                        scope_wrong_rate=float(bool(predicted_scope - expected_scope)))
         if case["type"] == "unanswerable":
-            handled = result.get("unanswerable_handled")
-            if handled is None and (result.get("route", rt.get("route")) == "fallback" or result.get("gen_meta", {}).get("scene") == "fallback"):
+            handled = None if generation_failed else result.get("unanswerable_handled")
+            if handled is None and not generation_failed and result.get("answer") and (result.get("route", rt.get("route")) == "fallback" or meta.get("scene") == "fallback"):
                 handled = True
-            if handled is None and no_answer_judge is not None:
+            if handled is None and not generation_failed and no_answer_judge is not None:
                 try:
                     handled = await no_answer_judge(case, result)
                 except Exception as exc:
@@ -164,10 +169,13 @@ async def evaluate(dataset, chunks, backend, *, tier, cfg, collection, config_ha
             if expected.get("answerable") and gold:
                 row["required_metrics"] = ["faithfulness", "answer_relevancy", "context_precision", "context_recall", "answer_correctness",
                                            "citation_validity_rate", "citation_support_rate", "citation_coverage"]
-                try:
-                    row.update(await score(case, result) if score else result.get("ragas", {}))
-                except Exception as exc:
-                    row.update(status="partial", score_error_type=type(exc).__name__)
+                if generation_failed:
+                    row["score_error_type"] = "GenerationFailed"
+                else:
+                    try:
+                        row.update(await score(case, result) if score else result.get("ragas", {}))
+                    except Exception as exc:
+                        row.update(status="partial", score_error_type=type(exc).__name__)
             if case["type"] == "unanswerable":
                 row["required_metrics"].append("unanswerable_rate")
             meta = result.get("gen_meta", {})
@@ -176,6 +184,9 @@ async def evaluate(dataset, chunks, backend, *, tier, cfg, collection, config_ha
                     stages[stage].append(meta[key] / 1000)
             if post.get("verify_ms") is not None:
                 stages["postprocess"].append(post["verify_ms"] / 1000)
+        row["missing_metrics"] = [name for name in row["required_metrics"] if row.get(name) is None]
+        if row["missing_metrics"] and row["status"] == "ok":
+            row["status"] = "partial"
         if states_output is not None:
             artifact = {"run":run_label,"case":case,"state":{k:result.get(k) for k in ("answer","context_blocks","gen_meta")}}
             with Path(states_output).open("a") as stream:
@@ -207,6 +218,15 @@ async def evaluate(dataset, chunks, backend, *, tier, cfg, collection, config_ha
             "failed":sum(r.get("status") in {"partial","failed"} for r in records)}
 
 
+
+def report_complete(report):
+    """任何失败/必需指标缺失均阻止建基线，含无gate的引用指标。"""
+    return not (report.get("mode") == "real" and report.get("stale", 0)) and all(
+        row.get("status") not in {"failed", "partial"} and not row.get("missing_metrics")
+        and all(row.get(name) is not None for name in row.get("required_metrics", []))
+        for row in report["cases"])
+
+
 def write_report(report, reports_dir):
     root = Path(reports_dir)
     root.mkdir(parents=True, exist_ok=True)
@@ -218,6 +238,7 @@ def write_report(report, reports_dir):
     for gate in report.get("gates", []):
         status = "PASS" if gate["status"] == "pass" else "🔴 FAIL" if gate["status"] == "fail" else "UNVERIFIED"
         md.append(f'| {gate["metric"]} | {gate["current"]} | {gate["baseline"]} | {status} |')
+    md += ["", f"Validation: {report.get('validation', {})}; baseline_updated={report.get('baseline_updated', False)}"]
     if report["mode"] == "fixture":
         md += ["", "Fixture shell only: NOT a real M4 evaluation or production baseline."]
     path.with_suffix(".md").write_text("\n".join(md) + "\n")
@@ -355,7 +376,10 @@ async def _run_open(args, stack):
             report["second_run"] = second
         else:
             report["baseline_stability"] = []
-        accepted = all(g["status"] == "pass" for g in report["gates"] + report["baseline_stability"])
+        report["validation"] = {"first_complete":report_complete(report)}
+        if args.tier == "full":
+            report["validation"]["second_complete"] = report_complete(second)
+        accepted = all(g["status"] == "pass" for g in report["gates"] + report["baseline_stability"]) and all(report["validation"].values())
         if accepted:
             baseline_dir.mkdir(parents=True, exist_ok=True)
             baseline_path.write_text(json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False) + "\n")
@@ -365,7 +389,8 @@ async def _run_open(args, stack):
         report["gates"] = check_gates(report["metrics"], baseline.get("metrics") if compatible else None, cfg.eval.gates, args.tier)
         if not compatible:
             report["baseline_error"] = "missing or incompatible baseline; use --update-baseline only after approval"
-        accepted = all(g["status"] == "pass" for g in report["gates"])
+        report["validation"] = {"first_complete":report_complete(report)}
+        accepted = all(g["status"] == "pass" for g in report["gates"]) and all(report["validation"].values())
     if not args.fixture:
         report.update(current_summary())
         report["failed"] = sum(r.get("status") in {"partial", "failed"} for r in report["cases"])
