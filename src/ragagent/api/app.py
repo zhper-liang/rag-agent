@@ -29,7 +29,7 @@ from ragagent.ingest.registry_db import RegistryDB
 from ragagent.llm.client import close_clients
 from ragagent.llm.observability import metrics_scope
 from ragagent.monitor.feedback import create_feedback_router
-from ragagent.monitor.langfuse import build_client as build_trace_client, report_score, trace_config
+from ragagent.monitor.langfuse import build_client as build_trace_client, report_score, trace_config, update_trace_intent
 from ragagent.monitor.metrics import MonitorMetrics
 from ragagent.retrieval.filters import validate_filters
 
@@ -165,6 +165,10 @@ def create_app(cfg=None, *, deps=None, graph=None, graph_factory=build_graph, me
                         scene = values.get('gen_meta', {}).get('scene')
                         if intent in ('rag', 'chat', 'clarify'):
                             route = intent
+                            try:
+                                update_trace_intent(run_config, intent=intent)
+                            except Exception as exc:
+                                log.warning('trace intent update failed_type=%s', type(exc).__name__)
                         if scene == 'fallback':
                             route = 'fallback'
             async with sessions.hold(sid):
