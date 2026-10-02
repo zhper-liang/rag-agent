@@ -33,7 +33,7 @@ async def generate_node(state: RAGState, runtime: Runtime[Deps]) -> dict:
     emit(runtime, {'type': 'progress', 'stage': 'generating'})
     try:
         result, info = await stream_answer(pkg, scene, deps.cfg.llm.endpoints, deps.sems,
-            lambda event: emit(runtime, event), clients=deps.clients, scene_name=name)
+            lambda event: emit(runtime, event))
     except GenerationFailed as exc:
         log.warning('generation failed_type=%s', type(exc).__name__)
         emit(runtime, {'type': 'error', 'message': '回答服务暂时不可用，请稍后再试'})

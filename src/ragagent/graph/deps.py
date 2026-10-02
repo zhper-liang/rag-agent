@@ -13,6 +13,7 @@ from pathlib import Path
 
 from ragagent.config import Config
 from ragagent.llm.structured import structured_call
+from ragagent.llm.observability import get_metrics
 from ragagent.prompt.env import build_env
 
 
@@ -29,8 +30,10 @@ class Deps:
     registry: Any | None = None
     structured_call: Callable = structured_call
     prompt_env: Any = None
-    metrics: Any = None
-    message_id: str | None = None
+    @property
+    def metrics(self):
+        """D-013 B：兼容节点读取；非dataclass字段，不接受构造/replace注入。"""
+        return get_metrics()
 
     def __post_init__(self):
         if self.prompt_env is None:

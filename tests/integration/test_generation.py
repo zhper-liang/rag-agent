@@ -12,7 +12,7 @@ from tests.integration.helpers import config
 
 
 @pytest.mark.parametrize('case,status', [('normal', 'ok'), ('length', 'truncated'), ('error', 'interrupted')])
-def test_generation_status_usage_and_saved_plain(tmp_path, case, status):
+def test_generation_status_usage_and_saved_plain(tmp_path, case, status, monkeypatch):
     async def run():
         cfg, wire = config(tmp_path), []
         sem = asyncio.Semaphore(1)
@@ -32,9 +32,12 @@ def test_generation_status_usage_and_saved_plain(tmp_path, case, status):
         async def structured(scene, eps, schema, messages):
             return Preprocessed(intent='chat', standalone_question='合成问题'), scene.primary
 
+        monkeypatch.setattr('ragagent.llm.stream.build_client', lambda ep, scene: Client())
         dep = Deps(cfg=cfg, count=len, structured_call=structured, write=wire.append,
-                   clients={('small', 'chat'): Client()}, sems={'small': sem})
-        state = await build_graph().ainvoke(initial_state('合成问题', None), context=dep)
+                   sems={'small': sem})
+        message_id = 'synthetic-' + case
+        state = await build_graph().ainvoke(initial_state('合成问题', None), context=dep,
+            config={'metadata': {'message_id': message_id}})
         meta, final = state['gen_meta'], wire[-1]
         assert meta['status'] == final['status'] == status
         assert final['type'] == 'final' and not any(e['type'] == 'error' for e in wire)
@@ -46,7 +49,7 @@ def test_generation_status_usage_and_saved_plain(tmp_path, case, status):
         ai = state['messages'][-1]
         expected = state['answer'] + (cfg.postprocess.incomplete_suffix if status != 'ok' else '')
         assert ai.content == state['answer'] and ai.additional_kwargs['plain'] == expected
-        assert ai.additional_kwargs['message_id'] == final['message_id']
+        assert ai.additional_kwargs['message_id'] == final['message_id'] == message_id
         assert ai.additional_kwargs['status'] == status
         assert closed and not sem.locked()
         assert 'private provider text' not in str(wire) + str(meta)

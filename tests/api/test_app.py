@@ -234,7 +234,7 @@ def test_session_locks_serial_and_reclaimed():
     asyncio.run(run())
 
 
-def test_disconnect_real_graph_stream_releases_client_and_keeps_history_empty(tmp_path):
+def test_disconnect_real_graph_stream_releases_client_and_keeps_history_empty(tmp_path, monkeypatch):
     from langchain_core.messages import AIMessageChunk
     from ragagent.graph.deps import Deps
     from ragagent.preprocess.schema import Preprocessed
@@ -260,8 +260,8 @@ def test_disconnect_real_graph_stream_releases_client_and_keeps_history_empty(tm
         async def structured(scene, eps, schema, messages):
             return Preprocessed(intent='chat', standalone_question='合成取消问题'), scene.primary
 
-        dep = Deps(cfg=cfg, count=len, structured_call=structured,
-                   clients={('small', 'chat'): StreamingClient()}, sems={'small': sem})
+        monkeypatch.setattr('ragagent.llm.stream.build_client', lambda ep, scene: StreamingClient())
+        dep = Deps(cfg=cfg, count=len, structured_call=structured, sems={'small': sem})
         db = str(tmp_path / 'cancel.db')
         async with AsyncSqliteSaver.from_conn_string(db) as saver:
             graph = build_graph(saver)
@@ -305,6 +305,9 @@ def test_rerank_degraded_budget_empty_context_real_graph_uses_rag_empty(tmp_path
 def test_production_factory_wires_counter_and_closes_milvus_on_startup_failure(tmp_path, monkeypatch, tokenizer_fails):
     import pymilvus
     import ragagent.ingest.chunking.tokenizer as tokenizer
+    from ragagent.llm import observability
+    previous = object()
+    monkeypatch.setattr(observability, 'METRICS', previous)
     cfg = config(tmp_path)
     calls = []
     class Milvus:
@@ -315,6 +318,7 @@ def test_production_factory_wires_counter_and_closes_milvus_on_startup_failure(t
     counter = lambda text: len(text)
     def get_counter(name):
         calls.append(('tokenizer', name))
+        assert observability.get_metrics() is app.state.metrics
         if tokenizer_fails:
             raise RuntimeError('local tokenizer init failed')
         return counter
@@ -331,3 +335,36 @@ def test_production_factory_wires_counter_and_closes_milvus_on_startup_failure(t
             assert isinstance(app.state.deps.milvus, Milvus)
             assert client.get('/metrics').status_code == 200
     assert calls == [('milvus', cfg.services.milvus.uri), ('tokenizer', cfg.chunking.tokenizer), ('close',)]
+    assert observability.get_metrics() is previous
+
+
+def test_global_metrics_bound_for_lifespan_then_restored(tmp_path, monkeypatch):
+    from ragagent.llm import observability
+    from ragagent.graph.deps import Deps
+    previous = object()
+    monkeypatch.setattr(observability, 'METRICS', previous)
+    cfg = config(tmp_path)
+    dep = Deps(cfg=cfg, count=len)
+    app = create_app(cfg, deps=dep)
+    with TestClient(app):
+        assert dep.metrics is app.state.metrics
+        assert observability.get_metrics() is app.state.metrics
+    assert observability.get_metrics() is previous
+
+
+def test_global_metrics_restored_even_if_cleanup_raises(tmp_path, monkeypatch):
+    import importlib
+    from ragagent.llm import observability
+    from ragagent.graph.deps import Deps
+    module = importlib.import_module('ragagent.api.app')
+    previous = object()
+    monkeypatch.setattr(observability, 'METRICS', previous)
+    async def close_fails():
+        raise RuntimeError('synthetic cleanup failure')
+    monkeypatch.setattr(module, 'close_clients', close_fails)
+    cfg = config(tmp_path)
+    app = create_app(cfg, deps=Deps(cfg=cfg, count=len))
+    with pytest.raises(RuntimeError, match='synthetic cleanup failure'):
+        with TestClient(app):
+            assert observability.get_metrics() is app.state.metrics
+    assert observability.get_metrics() is previous

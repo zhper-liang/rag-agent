@@ -114,7 +114,7 @@ async def stream_once(client, messages, first_token_timeout: float, emit, think=
     return StreamResult(text=''.join(parts), finish_reason=finish, usage=usage, ttft_ms=ttft)
 
 
-async def stream_answer(pkg, scene, eps, sems, emit, *, clients=None, scene_name=None) -> tuple[StreamResult, dict]:
+async def stream_answer(pkg, scene, eps, sems, emit) -> tuple[StreamResult, dict]:
     loop = asyncio.get_running_loop()
     start = loop.time()
     pre_deadline = start + scene.pre_first_token_budget_s
@@ -141,9 +141,7 @@ async def stream_answer(pkg, scene, eps, sems, emit, *, clients=None, scene_name
                 raise GenerationFailed('concurrency queue timed out', tried) from exc
             try:
                 try:
-                    client = (clients or {}).get((name, scene_name))
-                    if client is None:
-                        client = build_client(ep, scene)
+                    client = build_client(ep, scene)
                     res = await stream_once(client, messages,
                         scene.first_token_timeout_s, write,
                         ThinkFilter() if ep.strip_think else None,

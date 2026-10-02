@@ -1,6 +1,6 @@
 """问答SSE、SQLite会话历史、登记表原文下载、L4反馈与指标挂载。
 
-POST /api/chat接口定型依赖D-006；生产工厂：uvicorn ragagent.api.app:create_app --factory。
+POST /api/chat接口按D-006 A定型；生产工厂：uvicorn ragagent.api.app:create_app --factory。
 """
 from __future__ import annotations
 
@@ -27,6 +27,7 @@ from ragagent.graph.build import build_graph
 from ragagent.graph.deps import Deps
 from ragagent.ingest.registry_db import RegistryDB
 from ragagent.llm.client import close_clients
+from ragagent.llm.observability import metrics_scope
 from ragagent.monitor.feedback import create_feedback_router
 from ragagent.monitor.langfuse import build_client as build_trace_client, report_score, trace_config
 from ragagent.monitor.metrics import MonitorMetrics
@@ -89,13 +90,15 @@ def initial_state(question, filters) -> dict:
 def create_app(cfg=None, *, deps=None, graph=None, graph_factory=build_graph, metrics=None,
                trace_client=None, feedback_store=None) -> FastAPI:
     cfg = cfg or (deps.cfg if deps is not None else load_config())
-    metrics = metrics or (deps.metrics if deps is not None else None) or MonitorMetrics(endpoints=cfg.llm.endpoints)
+    metrics = metrics or MonitorMetrics(endpoints=cfg.llm.endpoints)
     sessions = SessionLocks()
     config_hash = hashlib.sha256(cfg.model_dump_json().encode()).hexdigest()
 
     @asynccontextmanager
     async def lifespan(app):
         owned_milvus, owned_trace = None, None
+        binding = metrics_scope(metrics)
+        binding.__enter__()
         try:
             base = deps
             if base is None:
@@ -105,7 +108,6 @@ def create_app(cfg=None, *, deps=None, graph=None, graph_factory=build_graph, me
                 owned_milvus = MilvusClient(uri=settings.uri, user=os.getenv(settings.user_env, ''),
                                             password=os.getenv(settings.password_env, ''))
                 base = Deps(cfg=cfg, count=get_counter(cfg.chunking.tokenizer), milvus=owned_milvus)
-            base = replace(base, metrics=metrics)
             app.state.deps = base
             app.state.trace_client = trace_client if trace_client is not None else build_trace_client(cfg)
             owned_trace = app.state.trace_client if trace_client is None else None
@@ -118,14 +120,17 @@ def create_app(cfg=None, *, deps=None, graph=None, graph_factory=build_graph, me
                 app.state.graph = graph
                 yield
         finally:
-            await close_clients()
-            if owned_milvus is not None:
-                owned_milvus.close()
-            if owned_trace is not None:
-                try:
-                    await asyncio.to_thread(owned_trace.flush)
-                except Exception as exc:
-                    log.warning('trace flush failed_type=%s', type(exc).__name__)
+            try:
+                await close_clients()
+                if owned_milvus is not None:
+                    owned_milvus.close()
+                if owned_trace is not None:
+                    try:
+                        await asyncio.to_thread(owned_trace.flush)
+                    except Exception as exc:
+                        log.warning('trace flush failed_type=%s', type(exc).__name__)
+            finally:
+                binding.__exit__(None, None, None)
 
     app = FastAPI(lifespan=lifespan)
     app.state.metrics = metrics
@@ -168,7 +173,7 @@ def create_app(cfg=None, *, deps=None, graph=None, graph_factory=build_graph, me
                     base = app.state.deps
                     if base.registry is None and Path(cfg.paths.registry_db).is_file():
                         registry = RegistryDB(cfg.paths.registry_db, readonly=True)
-                    ctx = replace(base, registry=registry or base.registry, message_id=mid)
+                    ctx = replace(base, registry=registry or base.registry)
                     run_config = trace_config(cfg, session_id=sid, message_id=mid, config_hash=config_hash,
                                               intent='rag', client=app.state.trace_client)
                     run_config['configurable'] = {'thread_id': sid}

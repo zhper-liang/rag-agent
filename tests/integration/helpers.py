@@ -11,7 +11,6 @@ from ragagent.api.app import create_app
 from ragagent.config import load_config
 from ragagent.graph.deps import Deps
 from ragagent.index.models import ChunkFields
-from ragagent.monitor.metrics import MonitorMetrics
 from tests.retrieval.fakes import FakeMilvus, row
 
 KEYS = ['LLM_MAIN_KEY', 'LLM_MAIN_BACKUP_KEY', 'LLM_SMALL_KEY', 'LLM_SMALL_BACKUP_KEY']
@@ -46,7 +45,7 @@ def deps(cfg, embed_url, *, milvus=None, rerank_client=None, **kwargs):
     return Deps(cfg=cfg, count=len, milvus=milvus or FakeMilvus(rows()),
         embed_client=httpx.AsyncClient(base_url=embed_url),
         rerank_client=rerank_client or httpx.AsyncClient(base_url=embed_url),
-        metrics=MonitorMetrics(endpoints=cfg.llm.endpoints), **kwargs)
+        **kwargs)
 
 
 def script(url, model, steps):

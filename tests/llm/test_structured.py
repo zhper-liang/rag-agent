@@ -96,16 +96,17 @@ def test_clients_close_rebuild_and_isolate_event_loops(monkeypatch):
         assert [c['model'] for c in httpx.get(base + '/_stub/calls').json()] == ['primary'] * 4
 
 
-def test_structured_optional_metrics_success_and_fallback(monkeypatch):
+def test_structured_global_metrics_success_and_fallback(monkeypatch):
     from prometheus_client import generate_latest
     from ragagent.monitor.metrics import MonitorMetrics
     monkeypatch.setenv('L3_STUB_KEY', 'stub')
     with serve(create_app()) as base:
         metrics = MonitorMetrics(endpoints=['primary', 'fallback'])
+        monkeypatch.setattr('ragagent.llm.observability.METRICS', metrics)
         httpx.post(base + '/_stub/script', json={'model': 'primary', 'steps': [{'status': 400}]}).raise_for_status()
         async def run():
             result, endpoint = await structured_call(oneshot(), endpoints(base), Preprocessed,
-                [HumanMessage('合成问题')], scene_name='preprocess', metrics=metrics)
+                [HumanMessage('合成问题')])
             assert result is not None and endpoint == 'fallback'
             await close_clients()
         asyncio.run(run())
