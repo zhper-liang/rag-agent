@@ -16,6 +16,7 @@ from typing import Literal
 from langchain_core.messages import HumanMessage, SystemMessage
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
+from ragagent.llm.observability import metrics_scope
 from ragagent.config import load_config
 from ragagent.llm.structured import structured_call
 
@@ -216,8 +217,9 @@ async def generate(chunks, cfg, *, call=structured_call, embed, retrieve, seed=0
 
 
 async def _main(args):
-    async with AsyncExitStack() as stack:
-        return await _main_open(args, stack)
+    with metrics_scope(None):
+        async with AsyncExitStack() as stack:
+            return await _main_open(args, stack)
 
 
 async def _main_open(args, stack):
@@ -245,7 +247,7 @@ async def _main_open(args, stack):
         else:
             from eval.runtime import open_deps
             deps = await stack.enter_async_context(open_deps(cfg,cfg.services.milvus.collection))
-        deps = replace(deps, structured_call=bounded_call, metrics=None, write=lambda event:None)
+        deps = replace(deps, structured_call=bounded_call, write=lambda event:None)
     from ragagent.llm.client import close_clients
     stack.push_async_callback(close_clients)
     async def retrieve(question):

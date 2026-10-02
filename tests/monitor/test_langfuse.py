@@ -70,3 +70,46 @@ def test_disabled_missing_keys_unmasked_are_fail_closed_and_score_only():
             calls.append(kwargs)
     report_score(ScoreClient(), message_id="m", rating=-1)
     assert calls == [{"name": "feedback", "value": -1, "data_type": "NUMERIC", "trace_id": Langfuse.create_trace_id(seed="m")}]
+
+
+def test_real_sdk_root_intent_update_and_final_state_isolate_traces(caplog):
+    from ragagent.monitor.langfuse import trace_config, update_trace_intent
+    exporter = CaptureExporter()
+    env = {'L4_TEST_PUBLIC': 'pk-l4-' + uuid.uuid4().hex, 'L4_TEST_SECRET': 'sk-test'}
+    cfg = config()
+    cfg.prompt = SimpleNamespace(version='v1')
+    client = build_client(cfg, env=env, tracer_provider=TracerProvider(), span_exporter=exporter)
+    configs = [trace_config(cfg, session_id='s', message_id=f'm{i}', config_hash='hash',
+                            intent='rag', client=client, env=env) for i in range(2)]
+    for i, (run_config, final) in enumerate(zip(configs, ['chat', 'clarify'])):
+        handler = run_config['callbacks'][0]
+        rid = uuid.uuid4()
+        handler.on_chain_start({'name': 'LangGraph'}, {'question': '禁止上报原文'}, run_id=rid,
+                               metadata=run_config['metadata'])
+        if i == 0:
+            assert update_trace_intent(run_config, intent=final)
+            assert not update_trace_intent(run_config, intent='私密意图')
+        handler.on_chain_end({'intent': final, 'answer': '禁止答案原文'}, run_id=rid)
+        assert not update_trace_intent(run_config, intent='rag')
+    client.flush()
+    spans = [dict(s.attributes) for s in exporter.spans if s.name == 'LangGraph']
+    assert len(spans) == 2
+    for attrs, final in zip(spans, ['chat', 'clarify']):
+        assert attrs['langfuse.trace.metadata.intent'] == final
+        assert attrs['langfuse.observation.metadata.intent'] == final
+        assert 'langfuse.observation.metadata.message_id' in attrs
+    exported = json.dumps(spans, ensure_ascii=False)
+    assert '禁止上报原文' not in exported and '禁止答案原文' not in exported
+    handler = configs[0]['callbacks'][0]
+    class BrokenRoot:
+        class Span:
+            def is_recording(self):
+                return True
+        _otel_span = Span()
+        def update(self, **kwargs):
+            raise RuntimeError('不能出现在日志的失败内容')
+    handler._safe_root = BrokenRoot()
+    assert not update_trace_intent(configs[0], intent='chat')
+    assert 'RuntimeError' in caplog.text and '不能出现在日志' not in caplog.text
+    assert not update_trace_intent({'callbacks': []}, intent='chat')
+    client.shutdown()

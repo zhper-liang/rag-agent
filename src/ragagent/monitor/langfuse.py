@@ -5,7 +5,8 @@ import logging
 import os
 from dataclasses import asdict, is_dataclass
 
-from langfuse import Langfuse
+from langfuse import Langfuse, propagate_attributes
+from opentelemetry.trace import use_span
 from langfuse.langchain import CallbackHandler
 
 log = logging.getLogger(__name__)
@@ -35,7 +36,57 @@ def mask(*, data, **_):
 
 
 class SafeCallbackHandler(CallbackHandler):
-    """SDK status_message 可能直接使用 str(error)，送入前只留下异常类别。"""
+    """固定 SDK 4.16：根节点结束前纠正分类，异常只留下类别。
+
+    根 observation 由该 handler 显式绑定，更新不依赖调用方当前 OTEL context。
+    _runs / _otel_span 是固定 SDK 的适配边界，真实 exporter 测试覆盖。
+    """
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        self._safe_root = None
+        self._safe_metadata = {}
+        self._safe_intent = None
+
+    def on_chain_start(self, serialized, inputs, *, run_id, parent_run_id=None, metadata=None, **kwargs):
+        if parent_run_id is None:
+            self._safe_metadata = dict(metadata or {})
+        result = super().on_chain_start(serialized, inputs, run_id=run_id,
+                                        parent_run_id=parent_run_id, metadata=metadata, **kwargs)
+        if parent_run_id is None:
+            self._safe_root = self._runs.get(run_id)
+            if self._safe_intent:
+                self.update_intent(self._safe_intent)
+        return result
+
+    def update_intent(self, intent):
+        try:
+            if intent not in {"rag", "chat", "clarify"} or self._langfuse_client._mask is not mask:
+                return False
+            self._safe_intent = intent
+            root = self._safe_root
+            if root is None:
+                return True  # on_update 可能先于 root callback；在 start/end 再应用
+            if not root._otel_span.is_recording():
+                return False
+            metadata = {**self._safe_metadata, "intent": intent}
+            root.update(metadata=metadata)
+            # propagate_attributes 不经过 SDK mask；这里只传枚举白名单值。
+            with use_span(root._otel_span, end_on_exit=False):
+                with propagate_attributes(metadata={"intent": intent}):
+                    pass
+            return True
+        except Exception as exc:
+            log.warning("Langfuse intent update failed_type=%s", type(exc).__name__)
+            return False
+
+    def on_chain_end(self, outputs, *, run_id, parent_run_id=None, **kwargs):
+        if parent_run_id is None:
+            # on_update 可能等到 stream 队列消费才执行；final State 是最后保障。
+            intent = outputs.get("intent") if isinstance(outputs, dict) else None
+            if intent is not None:
+                self.update_intent(intent)
+        return super().on_chain_end(outputs, run_id=run_id, parent_run_id=parent_run_id, **kwargs)
+
     def on_chain_error(self, error, **kwargs):
         return super().on_chain_error(RuntimeError(type(error).__name__), **kwargs)
 
@@ -44,6 +95,23 @@ class SafeCallbackHandler(CallbackHandler):
 
     def on_tool_error(self, error, **kwargs):
         return super().on_tool_error(RuntimeError(type(error).__name__), **kwargs)
+
+
+def update_trace_intent(run_config, *, intent):
+    """L3 on_update 使用同一次 trace_config 的结果；禁用/无效/失败返回 False。
+
+    不发额外 HTTP，不使用全局 handler，不接受任意 metadata 或原文。
+    root 结束后的 hook 不可更新已结束 span；on_chain_end 已用 final intent 修正。
+    """
+    try:
+        updated = False
+        for handler in run_config.get("callbacks", []):
+            if isinstance(handler, SafeCallbackHandler):
+                updated = handler.update_intent(intent) or updated
+        return updated
+    except Exception as exc:
+        log.warning("Langfuse intent hook failed_type=%s", type(exc).__name__)
+        return False
 
 
 def build_client(cfg, *, env=None, **sdk_options):

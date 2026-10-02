@@ -22,6 +22,7 @@ import yaml
 
 from eval.align import align_gold
 from eval.metrics import ndcg_at_k, percentile, recall_at_k, reciprocal_rank
+from ragagent.llm.observability import metrics_scope
 from ragagent.config import load_config
 
 
@@ -252,8 +253,9 @@ def validate_dataset(dataset):
 
 
 async def _run(args):
-    async with AsyncExitStack() as stack:
-        return await _run_open(args, stack)
+    with metrics_scope(None):
+        async with AsyncExitStack() as stack:
+            return await _run_open(args, stack)
 
 
 async def _run_open(args, stack):
@@ -287,7 +289,7 @@ async def _run_open(args, stack):
             deps = await stack.enter_async_context(open_deps(cfg,collection))
         from eval.cache import PreprocessCache
         cache = PreprocessCache(cfg, deps.structured_call, Path(cfg.eval.reports_dir) / "cache" / "preprocess")
-        deps = replace(deps, cfg=cfg, structured_call=cache, metrics=None, write=lambda event:None)
+        deps = replace(deps, cfg=cfg, structured_call=cache, write=lambda event:None)
         backend = real_backend(deps)
     mode = "fixture" if args.fixture else "real"
     collection = "l4_fixture" if args.fixture else args.collection or cfg.services.milvus.collection

@@ -175,6 +175,9 @@ def test_cli_default_runtime_budget_includes_filter_and_saves_partial(monkeypatc
     import ragagent.llm.client
     import ragagent.retrieval.pipeline
 
+    import ragagent.llm.observability as observability
+    sentinel = object()
+    monkeypatch.setattr(observability, 'METRICS', sentinel)
     cfg = config(counts={'single': 1, 'unanswerable': 2}, max_regen=0, max_per_doc=10)
     monkeypatch.setattr(module, 'load_config', lambda _: cfg)
     monkeypatch.setattr(LocalEmbeddings, 'from_config', lambda _: SimpleNamespace(aembed_documents=embed))
@@ -213,6 +216,7 @@ def test_cli_default_runtime_budget_includes_filter_and_saves_partial(monkeypatc
     args = SimpleNamespace(config='config.yaml', chunks=str(chunks), output=str(output),
                            max_calls=6, deps_factory=None, seed=0)
     assert asyncio.run(module._main(args)) == 1
+    assert observability.get_metrics() is sentinel
     assert calls == ['GeneratedQuestion', 'GeneratedQuestion', 'Preprocessed']
     assert len(output.read_text().splitlines()) == 2
     stats = json.loads(output.with_suffix('.generation.json').read_text())
@@ -225,6 +229,9 @@ def test_cli_closes_llm_on_generation_error(monkeypatch, tmp_path):
     from types import SimpleNamespace
     from eval import generate as module
     import ragagent.llm.client
+    import ragagent.llm.observability as observability
+    sentinel = object()
+    monkeypatch.setattr(observability, 'METRICS', sentinel)
     events = []
     monkeypatch.setattr(module, 'load_config', lambda _: config())
     async def fail(*_, **__):
@@ -240,3 +247,4 @@ def test_cli_closes_llm_on_generation_error(monkeypatch, tmp_path):
     with pytest.raises(RuntimeError, match='synthetic'):
         asyncio.run(module._main(args))
     assert events == ['closed']
+    assert observability.get_metrics() is sentinel
