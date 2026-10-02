@@ -193,15 +193,20 @@ def test_original_baseline_skips_llm_and_soft_scope_only_normalizes():
     asyncio.run(run())
 
 
-def test_injected_metrics_stages_hybrid_rerank_preprocess_image_and_retries(tmp_path):
+def test_injected_metrics_stages_hybrid_rerank_preprocess_image_and_retries(tmp_path, monkeypatch):
     from ragagent.monitor.metrics import MonitorMetrics
     from ragagent.context.build import build_context_details
+    from ragagent.llm import observability
+
+    metrics = MonitorMetrics()
+    monkeypatch.setattr(observability, "METRICS", metrics)
+
     async def run():
-        metrics = MonitorMetrics()
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=create_app()), base_url='http://stub') as stub:
             fake = FakeMilvus([chunk(text='q')], failures={'q': 'hybrid'})
             deps = Deps(config(), len, milvus=fake, embed_client=stub,
-                        structured_call=structured(None), metrics=metrics)
+                        structured_call=structured(None))
+            assert deps.metrics is metrics
             # 失败的rerank响应让融合结果直接进入context。
             async with httpx.AsyncClient(transport=httpx.MockTransport(lambda r: httpx.Response(500)), base_url='http://bad') as bad:
                 deps.rerank_client = bad
