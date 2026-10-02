@@ -21,6 +21,10 @@ def resolve_image(root: Path, relative: str) -> Path:
     path = Path(relative)
     if not relative or path.is_absolute() or '..' in path.parts or '\\' in relative:
         raise ValueError('图片必须使用clean目录内的相对路径')
+    # Chunk.image_path 使用文档约定 clean/{doc_id}/v{version}/...，
+    # HTTP 也接受直接相对 paths.clean 的路径；两者都限制在同一根目录内。
+    if path.parts and path.parts[0] == 'clean':
+        path = Path(*path.parts[1:])
     resolved = (root / path).resolve(strict=True)
     if not resolved.is_relative_to(root.resolve()) or not resolved.is_file():
         raise ValueError('图片不在clean目录内或不是普通文件')

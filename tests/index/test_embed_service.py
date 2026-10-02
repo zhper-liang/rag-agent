@@ -131,3 +131,16 @@ def test_bad_model_output_is_rejected(service):
     model.rerank = lambda pairs, length: [2.]
     with pytest.raises(RuntimeError, match='重排分数无效'):
         client.post('/rerank', json={'query': 'x', 'passages': ['x'], 'max_length': 512})
+
+
+def test_chunk_image_path_with_clean_prefix(service):
+    client, model, root = service
+    relative = Path('0123456789abcdef/v1/images/figure.png')
+    (root / relative).parent.mkdir(parents=True)
+    (root / relative).write_bytes(b'fixture')
+    response = client.post('/embed/image', json={'items': [
+        {'image_path': 'clean/' + relative.as_posix(), 'text': 'caption'}]})
+    assert response.status_code == 200
+    assert model.calls[-1] == ('image', [(str(root / relative), 'caption')])
+    assert client.post('/embed/image', json={'items': [
+        {'image_path': 'clean/../outside.png', 'text': 'bad'}]}).status_code == 422
