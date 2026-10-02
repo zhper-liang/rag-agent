@@ -4,7 +4,7 @@ from __future__ import annotations
 import os
 import time
 
-from pymilvus import MilvusClient
+from pymilvus import MilvusClient, MilvusException
 
 from ragagent.config import Config, load_config
 from ragagent.index.schema import create_collection
@@ -65,11 +65,17 @@ def load(client, coll: str, *, timeout_s: float = 120):
 
 def switch_alias(client, coll: str, alias: str = 'rag_chunks'):
     """只有调用方验收通过后才调用；M1a绝不切换正式别名。"""
+    if alias in client.list_collections():
+        raise ValueError(f'别名{alias}与现有实体collection冲突；需先由用户迁移原集合')
     try:
         client.describe_alias(alias)
-    except Exception:
-        # 不吞掉网络/认证错误：list_aliases再确认别名确实不存在。
-        if alias in client.list_aliases():
+    except MilvusException as exc:
+        if exc.code != 1600:  # 当前Milvus的alias-not-found；网络/认证等错误原样抛出
+            raise
+        aliases = client.list_aliases()
+        # pymilvus2.6返回包含aliases/db_name的dict；兼容旧版列表响应。
+        names = aliases['aliases'] if isinstance(aliases, dict) else aliases
+        if alias in names:
             raise
         client.create_alias(collection_name=coll, alias=alias)
     else:

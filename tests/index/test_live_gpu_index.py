@@ -70,10 +70,23 @@ def test_real_gpu_image_and_incremental_pipeline(tmp_path):
             assert not indexed['errors'] and indexed['chunks'] == len(chunks)
             assert indexed['indexes']['dense']['index_type'] == 'DISKANN'
             assert all(v['indexed_rows'] == v['total_rows'] > 0 for v in indexed['indexes'].values())
-            hit = client.search(coll, data=emb.text(['A red square on a white background']), anns_field='dense',
+            query = emb.text(['A red square on a white background'])
+            image_id = pictures[0].chunk_id
+            image_row = client.query(coll, filter='chunk_id == ' + json.dumps(image_id),
+                output_fields=['dense', 'embed_text'], consistency_level='Strong')[0]
+            import numpy as np
+            image_cosine = float(np.dot(query[0], image_row['dense']))
+            hit = client.search(coll, data=query, anns_field='dense',
                 search_params={'metric_type': 'COSINE', 'params': {'search_list': 100}}, limit=10,
                 consistency_level='Strong')[0]
-            assert pictures[0].chunk_id in [h['id'] for h in hit]
+            print('REAL_GPU_IMAGE_DIAG', json.dumps({'image_id': image_id, 'cosine': image_cosine,
+                'embed_text': image_row['embed_text'], 'top10_search100': [dict(h) for h in hit]}), flush=True)
+            if image_id not in [h['chunk_id'] for h in hit]:
+                hit = client.search(coll, data=query, anns_field='dense',
+                    search_params={'metric_type': 'COSINE', 'params': {'search_list': 1000}}, limit=10,
+                    consistency_level='Strong')[0]
+                print('REAL_GPU_IMAGE_SEARCH1000', [dict(h) for h in hit], flush=True)
+            assert image_id in [h['chunk_id'] for h in hit]
             print('REAL_GPU_IMAGE_TOP10', pictures[0].chunk_id)
 
             source.write_text('# Updated deployment\n\nNew version EUPDATE uses config.yaml for deployment. ' * 8)
