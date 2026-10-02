@@ -1,0 +1,130 @@
+[
+  {
+    "case": "vlm_docx_1",
+    "model": "vlm",
+    "source_file": "docx-1.docx",
+    "source_sha256": "643b5c87212f14a1fa307994e3054275bfbb18d10cc950e3a64eb992f4374171",
+    "content_list_sha256": "889b69c727609ae75f609488918dc0d246762f19d351dd50e67c0c886752ab14",
+    "content_list": "vlm_docx_1.content_list.json",
+    "expected_blocks": "vlm_docx_1.blocks.json",
+    "pages": 1,
+    "types": {
+      "heading": 2,
+      "paragraph": 3,
+      "table": 1
+    },
+    "collected_on": "2026-10-02",
+    "synthetic_only": true
+  },
+  {
+    "case": "vlm_docx_2",
+    "model": "vlm",
+    "source_file": "docx-2.docx",
+    "source_sha256": "c5e1c1db133e597df293a8a1a46970a1c9c8455d7bdf228ef38d7fb38c6f17eb",
+    "content_list_sha256": "93a65db4a8738e7e12eefeee56692b3c0b4b1750d95181b8ca98c698d38b114c",
+    "content_list": "vlm_docx_2.content_list.json",
+    "expected_blocks": "vlm_docx_2.blocks.json",
+    "pages": 1,
+    "types": {
+      "heading": 2,
+      "paragraph": 3,
+      "table": 1
+    },
+    "collected_on": "2026-10-02",
+    "synthetic_only": true
+  },
+  {
+    "case": "vlm_pptx_1",
+    "model": "vlm",
+    "source_file": "pptx-1.pptx",
+    "source_sha256": "b61ee2b17e01256ef3a828d29b920e0fbd5e67bbe9e175a619f0c352eecfa69e",
+    "content_list_sha256": "3536156bc5e40ff67f1da5de643bc6412bcf886ef120b1a8f2ad62d4d3a7c8a4",
+    "content_list": "vlm_pptx_1.content_list.json",
+    "expected_blocks": "vlm_pptx_1.blocks.json",
+    "pages": 2,
+    "types": {
+      "paragraph": 8
+    },
+    "collected_on": "2026-10-02",
+    "synthetic_only": true
+  },
+  {
+    "case": "vlm_pptx_2",
+    "model": "vlm",
+    "source_file": "pptx-2.pptx",
+    "source_sha256": "603eebe45420df8da0495c11285981b030f2baab350550a9d81f93a9f047188b",
+    "content_list_sha256": "afe68b38f75a9049a985498805631c00160e2bc4c2b7293f4225b60d9da20fd8",
+    "content_list": "vlm_pptx_2.content_list.json",
+    "expected_blocks": "vlm_pptx_2.blocks.json",
+    "pages": 2,
+    "types": {
+      "paragraph": 8
+    },
+    "collected_on": "2026-10-02",
+    "synthetic_only": true
+  },
+  {
+    "case": "pipeline_docx_1",
+    "model": "pipeline",
+    "source_file": "docx-1.docx",
+    "source_sha256": "643b5c87212f14a1fa307994e3054275bfbb18d10cc950e3a64eb992f4374171",
+    "content_list_sha256": "889b69c727609ae75f609488918dc0d246762f19d351dd50e67c0c886752ab14",
+    "content_list": "pipeline_docx_1.content_list.json",
+    "expected_blocks": "pipeline_docx_1.blocks.json",
+    "pages": 1,
+    "types": {
+      "heading": 2,
+      "paragraph": 3,
+      "table": 1
+    },
+    "collected_on": "2026-10-02",
+    "synthetic_only": true
+  },
+  {
+    "case": "pipeline_docx_2",
+    "model": "pipeline",
+    "source_file": "docx-2.docx",
+    "source_sha256": "c5e1c1db133e597df293a8a1a46970a1c9c8455d7bdf228ef38d7fb38c6f17eb",
+    "content_list_sha256": "93a65db4a8738e7e12eefeee56692b3c0b4b1750d95181b8ca98c698d38b114c",
+    "content_list": "pipeline_docx_2.content_list.json",
+    "expected_blocks": "pipeline_docx_2.blocks.json",
+    "pages": 1,
+    "types": {
+      "heading": 2,
+      "paragraph": 3,
+      "table": 1
+    },
+    "collected_on": "2026-10-02",
+    "synthetic_only": true
+  },
+  {
+    "case": "pipeline_pptx_1",
+    "model": "pipeline",
+    "source_file": "pptx-1.pptx",
+    "source_sha256": "b61ee2b17e01256ef3a828d29b920e0fbd5e67bbe9e175a619f0c352eecfa69e",
+    "content_list_sha256": "3536156bc5e40ff67f1da5de643bc6412bcf886ef120b1a8f2ad62d4d3a7c8a4",
+    "content_list": "pipeline_pptx_1.content_list.json",
+    "expected_blocks": "pipeline_pptx_1.blocks.json",
+    "pages": 2,
+    "types": {
+      "paragraph": 8
+    },
+    "collected_on": "2026-10-02",
+    "synthetic_only": true
+  },
+  {
+    "case": "pipeline_pptx_2",
+    "model": "pipeline",
+    "source_file": "pptx-2.pptx",
+    "source_sha256": "603eebe45420df8da0495c11285981b030f2baab350550a9d81f93a9f047188b",
+    "content_list_sha256": "afe68b38f75a9049a985498805631c00160e2bc4c2b7293f4225b60d9da20fd8",
+    "content_list": "pipeline_pptx_2.content_list.json",
+    "expected_blocks": "pipeline_pptx_2.blocks.json",
+    "pages": 2,
+    "types": {
+      "paragraph": 8
+    },
+    "collected_on": "2026-10-02",
+    "synthetic_only": true
+  }
+]

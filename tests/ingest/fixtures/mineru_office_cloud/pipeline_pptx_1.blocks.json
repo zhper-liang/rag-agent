@@ -1,0 +1,66 @@
+[
+  {
+    "type": "paragraph",
+    "text": "L1 Synthetic PPT 1 slide 1",
+    "level": 0,
+    "page": 1,
+    "image_path": null,
+    "meta": {}
+  },
+  {
+    "type": "paragraph",
+    "text": "Deployment: CLEAN - CHUNK - EMBED - DISKANN.",
+    "level": 0,
+    "page": 1,
+    "image_path": null,
+    "meta": {}
+  },
+  {
+    "type": "paragraph",
+    "text": "Dimension=1024, error code E00042. Formula f(x)=(x+1)/2.",
+    "level": 0,
+    "page": 1,
+    "image_path": null,
+    "meta": {}
+  },
+  {
+    "type": "paragraph",
+    "text": "中文演示文稿合成样本。页码应当正确保留。",
+    "level": 0,
+    "page": 1,
+    "image_path": null,
+    "meta": {}
+  },
+  {
+    "type": "paragraph",
+    "text": "L1 Synthetic PPT 1 slide 2",
+    "level": 0,
+    "page": 2,
+    "image_path": null,
+    "meta": {}
+  },
+  {
+    "type": "paragraph",
+    "text": "Deployment: CLEAN - CHUNK - EMBED - DISKANN.",
+    "level": 0,
+    "page": 2,
+    "image_path": null,
+    "meta": {}
+  },
+  {
+    "type": "paragraph",
+    "text": "Dimension=1024, error code E00042. Formula f(x)=(x+1)/2.",
+    "level": 0,
+    "page": 2,
+    "image_path": null,
+    "meta": {}
+  },
+  {
+    "type": "paragraph",
+    "text": "中文演示文稿合成样本。页码应当正确保留。",
+    "level": 0,
+    "page": 2,
+    "image_path": null,
+    "meta": {}
+  }
+]

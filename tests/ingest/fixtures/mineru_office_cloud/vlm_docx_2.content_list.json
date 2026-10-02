@@ -1,0 +1,35 @@
+[
+    {
+        "type": "text",
+        "text": "**L1 Synthetic Word 2**",
+        "text_level": 1,
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "**Deployment procedure**",
+        "text_level": 2,
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "Set the embedding dimension to 1024. E00042 means a dimension mismatch.",
+        "page_idx": 0
+    },
+    {
+        "type": "table",
+        "table_caption": [],
+        "table_body": "<table><tr><td><p>Model</p></td></tr><tr><td><p>BGE-M3</p></td></tr><tr><td><p>Reranker</p></td></tr></table>",
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "Formula: f(x) = (x + 1) / 2.",
+        "page_idx": 0
+    },
+    {
+        "type": "text",
+        "text": "中文部署指南：只包含合成样本，不含真实用户资料。",
+        "page_idx": 0
+    }
+]
