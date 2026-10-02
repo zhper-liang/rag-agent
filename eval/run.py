@@ -84,15 +84,20 @@ def _summary(rows):
     return result
 
 
-async def evaluate(dataset, chunks, backend, *, tier, cfg, collection, config_hash, mode="real", score=None, no_answer_judge=None, states_output=None):
+async def evaluate(dataset, chunks, backend, *, tier, cfg, collection, config_hash, mode="real", score=None, no_answer_judge=None, states_output=None, concurrency=1, run_label="first"):
+    call_start = current_summary().get("actual_calls", 0)
     records, groups, stages = [], defaultdict(list), defaultdict(list)
+    if concurrency < 1:
+        raise ValueError("evaluation concurrency must be positive")
     stale = 0
-    for case in dataset:
+    sem = asyncio.Semaphore(concurrency)
+    async def one(case):
+        nonlocal stale
         gold = align_gold(case.get("gold", []), chunks)
         if gold is None:
             stale += 1
             records.append({"id": case["id"], "status": "stale"})
-            continue
+            return
         start = time.perf_counter()
         try:
             result = await backend(case, tier)
@@ -106,7 +111,7 @@ async def evaluate(dataset, chunks, backend, *, tier, cfg, collection, config_ha
             records.append(row)
             for group in {"all", case["type"], *case.get("tags", [])}:
                 groups[group].append(row)
-            continue
+            return
         elapsed = time.perf_counter() - start
         expected = case["expect"]
         intent = result.get("intent")
@@ -172,7 +177,7 @@ async def evaluate(dataset, chunks, backend, *, tier, cfg, collection, config_ha
             if post.get("verify_ms") is not None:
                 stages["postprocess"].append(post["verify_ms"] / 1000)
         if states_output is not None:
-            artifact = {"case":case,"state":{k:result.get(k) for k in ("answer","context_blocks","gen_meta")}}
+            artifact = {"run":run_label,"case":case,"state":{k:result.get(k) for k in ("answer","context_blocks","gen_meta")}}
             with Path(states_output).open("a") as stream:
                 stream.write(json.dumps(artifact,ensure_ascii=False,allow_nan=False)+"\n")
         records.append(row)
@@ -180,6 +185,12 @@ async def evaluate(dataset, chunks, backend, *, tier, cfg, collection, config_ha
             print(f"evaluated={case['id']} status={row['status']} actual_calls={current_summary().get('actual_calls', 0)}", flush=True)
         for group in {"all", case["type"], *case.get("tags", [])}:
             groups[group].append(row)
+    async def limited(case):
+        async with sem:
+            await one(case)
+    await asyncio.gather(*(limited(case) for case in dataset))
+    order = {case["id"]: i for i, case in enumerate(dataset)}
+    records.sort(key=lambda row: order[row["id"]])
     if not groups["all"]:
         raise ValueError("no evaluable questions (dataset empty or all stale)")
     ds_hash = hashlib.sha256(json.dumps(dataset, sort_keys=True, ensure_ascii=False).encode()).hexdigest()
@@ -191,7 +202,9 @@ async def evaluate(dataset, chunks, backend, *, tier, cfg, collection, config_ha
                        for scene in [getattr(cfg.llm.scenes, name)]},
             "metrics": _summary(groups["all"]), "groups": {k: _summary(v) for k, v in groups.items()},
             "stages": {k: {"p50": percentile(v, .5), "p95": percentile(v, .95)} for k, v in stages.items()},
-            "cases": records}
+            "cases": records, "concurrency": concurrency, "run":run_label,
+            "run_actual_calls":current_summary().get("actual_calls", 0)-call_start,
+            "failed":sum(r.get("status") in {"partial","failed"} for r in records)}
 
 
 def write_report(report, reports_dir):
@@ -318,7 +331,7 @@ async def _run_open(args, stack):
     mode = "fixture" if args.fixture else "real"
     collection = "l4_fixture" if args.fixture else args.collection or cfg.services.milvus.collection
     config_hash = hashlib.sha256(Path(args.config).read_bytes()).hexdigest()
-    kwargs = dict(tier=args.tier, cfg=cfg, collection=collection, config_hash=config_hash, mode=mode)
+    kwargs = dict(tier=args.tier, cfg=cfg, collection=collection, config_hash=config_hash, mode=mode, concurrency=getattr(args,"concurrency",1))
     if not args.fixture and args.tier == "full":
         if args.max_eval_calls is None:
             raise ValueError("real full evaluation requires explicit --max-eval-calls for judge requests")
@@ -336,7 +349,7 @@ async def _run_open(args, stack):
     if args.update_baseline:
         report["gates"] = check_gates(report["metrics"], report["metrics"], cfg.eval.gates, args.tier)
         if args.tier == "full":
-            second = await evaluate(dataset, chunks, backend, **kwargs)
+            second = await evaluate(dataset, chunks, backend, **kwargs, run_label="second")
             report["baseline_stability"] = baseline_stability(report["metrics"], second["metrics"], cfg.eval.gates)
             report["baseline_stability_mode"] = mode
             report["second_run"] = second
@@ -368,6 +381,7 @@ async def _run_open(args, stack):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument("--concurrency", type=int, default=1)
     parser.add_argument("--tier", choices=["quick", "full"], required=True)
     parser.add_argument("--config", default="config.yaml")
     parser.add_argument("--dataset")

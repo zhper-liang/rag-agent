@@ -139,3 +139,33 @@ def test_chinese_comparison_and_explicit_noanswer_judge(monkeypatch, embed_url):
             finally:
                 await close_clients()
         asyncio.run(run())
+
+
+def test_multisampling_uses_three_independent_n1_requests(monkeypatch, embed_url):
+    from fastapi.responses import JSONResponse
+    from langchain_core.prompt_values import StringPromptValue
+    from eval.calls import counted_calls, current_summary
+    monkeypatch.setenv('L3_STUB_KEY','stub')
+    app = FastAPI()
+    requests = []
+    @app.post('/v1/chat/completions')
+    async def completion(request: Request):
+        body = await request.json()
+        requests.append(body)
+        if body.get('n',1) != 1:
+            return JSONResponse({'error':{'message':'n is not supported'}},status_code=400)
+        return {'id':'s','object':'chat.completion','created':0,'model':'primary',
+                'choices':[{'index':0,'finish_reason':'stop','message':{'role':'assistant','content':f'sample-{len(requests)}'}}]}
+    with serve(app) as base:
+        async def run():
+            scorer = RagasScorer(cfg_for(base,embed_url), max_calls=3)
+            try:
+                with counted_calls(3):
+                    result = await scorer.llm.agenerate_text(StringPromptValue(text='public sample'),n=3)
+                    assert current_summary()['actual_calls'] == 3
+                assert [g.text for g in result.generations[0]] == ['sample-1','sample-2','sample-3']
+                assert scorer.budget.used == 3
+            finally:
+                await close_clients()
+        asyncio.run(run())
+    assert len(requests) == 3 and all(r.get('n') == 1 for r in requests)

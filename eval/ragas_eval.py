@@ -54,19 +54,29 @@ class EvalLLM(LangchainLLMWrapper):
                          run_config=run_config)
 
     async def agenerate_text(self, prompt, n=1, temperature=None, stop=None, callbacks=None):
+        if not isinstance(n, int) or n < 1:
+            raise ValueError('generation count must be positive')
+        # OpenAI-compatible 接入点可能仅支持 n=1；RAGAS 的 n 个样本必须独立真实采样。
+        # 不复制一个回答冒充多样本；每次采样的主备调用均计入物理及预约预算。
         scene = self.cfg.llm.scenes.eval
-        for index, name in enumerate((scene.primary, scene.fallback)):
-            self.budget.reserve()
-            ep = self.cfg.llm.endpoints[name]
-            # 请求级kwargs，不变更共享client的n/temperature。
-            client = build_client(ep, scene)
-            try:
-                async with endpoint_semaphore(ep):
-                    return await client.agenerate_prompt([prompt], n=n, temperature=scene.temperature, stop=stop, callbacks=[])
-            except Exception:
-                if index:
-                    raise
-        raise AssertionError('unreachable')
+        results = []
+        for _ in range(n):
+            for index, name in enumerate((scene.primary, scene.fallback)):
+                self.budget.reserve()
+                ep = self.cfg.llm.endpoints[name]
+                client = build_client(ep, scene)
+                try:
+                    async with endpoint_semaphore(ep):
+                        result = await client.agenerate_prompt([prompt], n=1, temperature=scene.temperature,
+                                                               stop=stop, callbacks=[])
+                    results.append(result)
+                    break
+                except Exception:
+                    if index:
+                        raise
+        return results[0].model_copy(update={
+            'generations': [[generation for result in results for generation in result.generations[0]]],
+            'llm_output': None})
 
 
 class DirectScores(BaseModel):
@@ -128,7 +138,11 @@ class RagasScorer:
         if not row.response or not row.retrieved_contexts:
             raise ValueError('answerable RAGAS sample requires an actual answer and contexts')
         result = await aevaluate(EvaluationDataset(samples=[row]), metrics=self.metrics(), llm=self.llm,
-                                embeddings=self.embeddings, run_config=self.run_config, callbacks=[],
+                                # timeout_s 属于每次接入点请求；单个metric可串行消费多份context
+                                # 和主备。保留单请求60s，在metric层按实际context数量给总时限。
+                                embeddings=self.embeddings, run_config=RunConfig(
+                                    timeout=self.cfg.llm.scenes.eval.timeout_s * max(6, 2*len(row.retrieved_contexts)),
+                                    max_retries=1, max_workers=1), callbacks=[],
                                 raise_exceptions=True, show_progress=False)
         scores = {}
         for key, value in result.scores[0].items():
@@ -165,7 +179,7 @@ class RagasScorer:
             HumanMessage(row.model_dump_json())])
         return scores.model_dump()
 
-    async def validate_chinese(self, samples, *, count=None, max_difference=.15):
+    async def validate_chinese(self, samples, *, count=None, max_difference=.15, concurrency=1, on_result=None):
         count = self.cfg.eval.ragas_check_samples if count is None else count
         rows = [r for r in samples if r['case']['expect']['answerable'] and r['case'].get('gold')]
         if len({r['case']['id'] for r in rows}) != len(rows):
@@ -174,15 +188,25 @@ class RagasScorer:
             raise ValueError('Chinese validation requires Chinese user questions')
         if len(rows) < count:
             raise ValueError(f'Chinese validation needs {count} answerable samples, only {len(rows)} provided')
-        results = []
-        for r in rows[:count]:
-            try:
-                measured = await self(r['case'], r['state'])
-                direct = await self.direct_scores(r['case'], r['state'])
-                results.append({'id': r['case']['id'], 'status': 'ok', 'ragas': measured, 'direct': direct})
-            except Exception as exc:
-                results.append({'id': r['case']['id'], 'status': 'failed', 'error_type': type(exc).__name__})
-            print(f"chinese={len(results)}/{count} status={results[-1]['status']}", flush=True)
+        if concurrency < 1:
+            raise ValueError('Chinese validation concurrency must be positive')
+        sem = asyncio.Semaphore(concurrency)
+        completed = 0
+        async def one(r):
+            nonlocal completed
+            async with sem:
+                try:
+                    measured = await self(r['case'], r['state'])
+                    direct = await self.direct_scores(r['case'], r['state'])
+                    result = {'id': r['case']['id'], 'status': 'ok', 'ragas': measured, 'direct': direct}
+                except Exception as exc:
+                    result = {'id': r['case']['id'], 'status': 'failed', 'error_type': type(exc).__name__}
+                completed += 1
+                if on_result is not None:
+                    on_result(result)
+                print(f"chinese={completed}/{count} id={r['case']['id']} status={result['status']}", flush=True)
+                return result
+        results = await asyncio.gather(*(one(r) for r in rows[:count]))
         valid = [r for r in results if r['status'] == 'ok']
         mae = {k: sum(abs(r['ragas'][k]-r['direct'][k]) for r in valid)/len(valid) if valid else None for k in self.metric_names}
         return {'samples':count, 'mean_absolute_difference':mae, 'max_difference':max_difference,
@@ -200,9 +224,16 @@ async def _main_open(args):
     cfg = load_config(args.config)
     samples = [json.loads(s) for s in Path(args.input).read_text().splitlines() if s.strip()]
     scorer = RagasScorer(cfg, max_calls=args.max_calls, prompt_dir=args.prompt_dir)
+    progress = []
+    def persist(result):
+        progress.append(result)
+        Path(args.output).parent.mkdir(parents=True, exist_ok=True)
+        Path(args.output).write_text(json.dumps({'status':'running', 'requested':cfg.eval.ragas_check_samples,
+            'completed':len(progress), 'cases':progress, **current_summary()}, ensure_ascii=False, indent=2)+'\n')
     try:
         if args.check_chinese:
-            report = await scorer.validate_chinese(samples, max_difference=args.max_difference)
+            report = await scorer.validate_chinese(samples, max_difference=args.max_difference,
+                concurrency=args.concurrency, on_result=persist)
         else:
             report = {'cases':[{'id':r['case']['id'], 'scores':await scorer(r['case'],r['state'])} for r in samples],
                       'reserved_calls':scorer.budget.used}
@@ -217,6 +248,7 @@ async def _main_open(args):
 
 def main(argv=None):
     p = argparse.ArgumentParser(description=__doc__)
+    p.add_argument('--concurrency', type=int, default=1)
     p.add_argument('--config', default='config.yaml')
     p.add_argument('--input', required=True, help='本地JSONL记录，每行为 {case:评测题,state:实际RAGState}')
     p.add_argument('--output', required=True)

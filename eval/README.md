@@ -28,6 +28,7 @@ uv run python -m eval.run --tier full --fixture --fixture-regression
 
 退出码：`0` 所需门槛全部通过；`1` 回归失败/缺失指标/缺失或不兼容基线/波动超限；
 `2` 输入或后端执行错误。不自动建立生产基线。百分点门槛除以100，刚好等于门槛允许。
+`--concurrency` 默认为1，需显式设置相同并发以比较两跑；结果按题集顺序保存，失败题不剔除。
 首次完整档 `--update-baseline` 跑两次，对称比较指标，任一方向超过配置门槛均不写基线。
 报告 JSON 和 Markdown 写入 `eval.reports_dir`，失败标红；fixture 报告在其 `fixtures/` 子目录。
 
@@ -89,7 +90,9 @@ def create_deps(cfg, collection):
 五项真实RAGAS指标：忠实度、回答相关性、上下文精确率/召回率、正确性。
 回答复用 L3 parser 去补充段和非代码 `[n]`，无答案题不跑RAGAS，只做fallback/直接判定。
 回答相关性/语义相似度均使用本地 `/embed/text {texts:[...]}`，禁止使用默认远程embedding。
-主备采用 L3 eval scene/客户端/并发限制；SDK/RAGAS隐式重试关闭，所有评分请求有调用预算。
+主备采用 L3 eval scene/客户端/并发限制；SDK/RAGAS隐式重试关闭，所有评分请求有调用预算。单个接入点请求遵守eval scene timeout；
+RAGAS metric总时限另按上下文数量及主备串行请求上界分配，避免把60s请求时限误当整项metric时限。RAGAS多采样拆成独立 `n=1` 实际请求，
+兼容不支持 `n>1` 的接入点；每个样本的主备请求逐次计数，不复制回答冒充独立采样。
 
 ```bash
 uv run --env-file .env python -m eval.ragas_eval \
@@ -98,6 +101,7 @@ uv run --env-file .env python -m eval.ragas_eval \
 ```
 
 输入每行 `{case:完整评测题,state:实际RAGState}`，需要30条互异、有gold的中文题。
+`--concurrency` 控制对照样本并发；每题结束即写进度检查点，最终报告包含失败和missing。
 逐条与同标准直接LLM评分对照，输出每项 MAE；默认人工审查阈值0.15，可 `--max-difference`。
 超限返回1，要求人工检查/中文prompt适配后再验证，不自动宣称中文效果合格。
 适配后的RAGAS中文prompt JSON文件可通过 `--prompt-dir`/`eval.run --ragas-prompt-dir` 加载。

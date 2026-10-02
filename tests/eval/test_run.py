@@ -143,3 +143,28 @@ def test_actual_adapter_uses_graph_context_and_original_sidecar(monkeypatch):
     asyncio.run(run())
     assert [x[0] for x in seen]==['quick','original','full','original']
     assert len(seen[0][2]['messages'])==2
+
+
+def test_concurrent_evaluation_keeps_failed_case_and_input_order():
+    from ragagent.config import Config
+    cfg = Config.model_validate(yaml.safe_load(Path('config.yaml').read_text()))
+    cases = fixture_dataset()[:3]
+    active = peak = 0
+    fixture = FixtureBackend()
+    async def backend(case, tier):
+        nonlocal active, peak
+        active += 1
+        peak = max(peak, active)
+        try:
+            await asyncio.sleep(.01 if case is cases[0] else 0)
+            if case is cases[1]:
+                raise RuntimeError('backend unavailable')
+            return await fixture(case, tier)
+        finally:
+            active -= 1
+    report = asyncio.run(evaluate(cases, fixture_chunks(), backend, tier='quick', cfg=cfg,
+                                  collection='l4_fixture', config_hash='x', mode='fixture', concurrency=2))
+    assert peak == 2
+    assert [r['id'] for r in report['cases']] == [c['id'] for c in cases]
+    assert report['cases'][1]['status'] == 'failed'
+    assert report['metrics']['recall_at_8'] is None
