@@ -142,7 +142,7 @@ class RagasScorer:
                                 # 和主备。保留单请求60s，在metric层按实际context数量给总时限。
                                 embeddings=self.embeddings, run_config=RunConfig(
                                     timeout=self.cfg.llm.scenes.eval.timeout_s * max(6, 2*len(row.retrieved_contexts)),
-                                    max_retries=1, max_workers=1), callbacks=[],
+                                    max_retries=1, max_workers=len(self.metric_names)), callbacks=[],
                                 raise_exceptions=True, show_progress=False)
         scores = {}
         for key, value in result.scores[0].items():
