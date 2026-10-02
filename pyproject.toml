@@ -5,7 +5,9 @@ description = "RAG 问答系统（LangGraph + Milvus DISKANN）"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "datasketch==2.0.0",
+    "einops==0.8.2",
     "fastapi==0.141.1",
+    "ftfy==6.3.1",
     "huggingface-hub==1.33.0",
     "imagehash==4.3.2",
     "jinja2==3.1.6",
@@ -23,7 +25,12 @@ dependencies = [
     "pyyaml==6.0.3",
     "ragas==0.4.3",
     "rapidfuzz==3.14.6",
+    "sentencepiece==0.2.2",
+    "timm==1.0.30",
     "tokenizers==0.22.2",
+    "torch==2.8.0",
+    "torchvision==0.23.0",
+    "transformers==5.0.0",
     "uvicorn==0.54.0",
 ]
 
