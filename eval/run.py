@@ -20,6 +20,8 @@ from pathlib import Path
 
 import yaml
 
+from eval.calls import counted_calls, current_summary
+from contextlib import nullcontext
 from eval.align import align_gold
 from eval.metrics import ndcg_at_k, percentile, recall_at_k, reciprocal_rank
 from ragagent.llm.observability import metrics_scope
@@ -75,8 +77,9 @@ def _summary(rows):
     result = {f: (None if any(f in r.get("required_metrics", []) and r.get(f) is None for r in rows)
                   else _mean([r[f] for r in rows if r.get(f) is not None])) for f in fields}
     latency = [r["latency_s"] for r in rows if r.get("latency_s") is not None]
-    result.update(p50_latency_s=percentile(latency, .5) if latency else None,
-                  p95_latency_s=percentile(latency, .95) if latency else None,
+    latency_missing = any("p95_latency_s" in r.get("required_metrics", []) and r.get("latency_s") is None for r in rows)
+    result.update(p50_latency_s=percentile(latency, .5) if latency and not latency_missing else None,
+                  p95_latency_s=percentile(latency, .95) if latency and not latency_missing else None,
                   budget_dropped_hits=sum(r.get("budget_dropped_hits", 0) for r in rows))
     return result
 
@@ -91,9 +94,19 @@ async def evaluate(dataset, chunks, backend, *, tier, cfg, collection, config_ha
             records.append({"id": case["id"], "status": "stale"})
             continue
         start = time.perf_counter()
-        result = await backend(case, tier)
-        if not isinstance(result, dict):
-            raise TypeError("backend must return RAGState dictionary")
+        try:
+            result = await backend(case, tier)
+            if not isinstance(result, dict):
+                raise TypeError("backend must return RAGState dictionary")
+        except Exception as exc:
+            row = {"id": case["id"], "status": "failed", "error_type": type(exc).__name__,
+                   "required_metrics": ["recall_at_8", "chat_misroute", "p95_latency_s"]}
+            if tier == "full":
+                row["required_metrics"] += ["faithfulness", "citation_support_rate", "unanswerable_rate"]
+            records.append(row)
+            for group in {"all", case["type"], *case.get("tags", [])}:
+                groups[group].append(row)
+            continue
         elapsed = time.perf_counter() - start
         expected = case["expect"]
         intent = result.get("intent")
@@ -125,7 +138,10 @@ async def evaluate(dataset, chunks, backend, *, tier, cfg, collection, config_ha
             if handled is None and (result.get("route", rt.get("route")) == "fallback" or result.get("gen_meta", {}).get("scene") == "fallback"):
                 handled = True
             if handled is None and no_answer_judge is not None:
-                handled = await no_answer_judge(case, result)
+                try:
+                    handled = await no_answer_judge(case, result)
+                except Exception as exc:
+                    row.update(status="partial", judge_error_type=type(exc).__name__)
             row["unanswerable_rate"] = float(handled) if handled is not None else None
         elif gold:
             row["answerable_rejected"] = float(result.get("route", rt.get("route")) == "fallback" or result.get("gen_meta", {}).get("scene") == "fallback")
@@ -143,7 +159,10 @@ async def evaluate(dataset, chunks, backend, *, tier, cfg, collection, config_ha
             if expected.get("answerable") and gold:
                 row["required_metrics"] = ["faithfulness", "answer_relevancy", "context_precision", "context_recall", "answer_correctness",
                                            "citation_validity_rate", "citation_support_rate", "citation_coverage"]
-                row.update(await score(case, result) if score else result.get("ragas", {}))
+                try:
+                    row.update(await score(case, result) if score else result.get("ragas", {}))
+                except Exception as exc:
+                    row.update(status="partial", score_error_type=type(exc).__name__)
             if case["type"] == "unanswerable":
                 row["required_metrics"].append("unanswerable_rate")
             meta = result.get("gen_meta", {})
@@ -157,6 +176,8 @@ async def evaluate(dataset, chunks, backend, *, tier, cfg, collection, config_ha
             with Path(states_output).open("a") as stream:
                 stream.write(json.dumps(artifact,ensure_ascii=False,allow_nan=False)+"\n")
         records.append(row)
+        if mode == "real":
+            print(f"evaluated={case['id']} status={row['status']} actual_calls={current_summary().get('actual_calls', 0)}", flush=True)
         for group in {"all", case["type"], *case.get("tags", [])}:
             groups[group].append(row)
     if not groups["all"]:
@@ -253,7 +274,10 @@ def validate_dataset(dataset):
 
 
 async def _run(args):
-    with metrics_scope(None):
+    if not args.fixture and not getattr(args, 'max_calls', None):
+        raise ValueError('real evaluation requires explicit --max-calls for all LLM requests')
+    counter = nullcontext() if args.fixture else counted_calls(args.max_calls, ledger=args.calls_output)
+    with metrics_scope(None), counter:
         async with AsyncExitStack() as stack:
             return await _run_open(args, stack)
 
@@ -315,6 +339,7 @@ async def _run_open(args, stack):
             second = await evaluate(dataset, chunks, backend, **kwargs)
             report["baseline_stability"] = baseline_stability(report["metrics"], second["metrics"], cfg.eval.gates)
             report["baseline_stability_mode"] = mode
+            report["second_run"] = second
         else:
             report["baseline_stability"] = []
         accepted = all(g["status"] == "pass" for g in report["gates"] + report["baseline_stability"])
@@ -329,6 +354,8 @@ async def _run_open(args, stack):
             report["baseline_error"] = "missing or incompatible baseline; use --update-baseline only after approval"
         accepted = all(g["status"] == "pass" for g in report["gates"])
     if not args.fixture:
+        report.update(current_summary())
+        report["failed"] = sum(r.get("status") in {"partial", "failed"} for r in report["cases"])
         report["preprocess_cache"] = {"hits":cache.hits,"misses":cache.misses}
         if args.tier == "full":
             report["eval_reserved_calls"] = scorer.budget.used
@@ -347,6 +374,8 @@ def main(argv=None):
     parser.add_argument("--collection")
     parser.add_argument("--chunks")
     parser.add_argument("--deps-factory")
+    parser.add_argument("--max-calls", type=int, help="全链实际HTTP调用上限，真实档必须显式设置")
+    parser.add_argument("--calls-output", default="eval/reports/run.calls.json")
     parser.add_argument("--max-eval-calls", type=int, help="真实完整档评测模型调用上限；主备保守计数")
     parser.add_argument("--ragas-prompt-dir")
     parser.add_argument("--states-output", help="仅本地保存实际回答/上下文，供中文30条验证")

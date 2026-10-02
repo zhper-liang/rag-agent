@@ -117,7 +117,7 @@ def token_safety_factor(samples, *, minimum=1000):
 def calibrate(data, *, mode):
     if mode not in {'real','synthetic'}:
         raise ValueError('mode must be real or synthetic')
-    report={'mode':mode,'config_modified':False,'provenance':data.get('provenance'), 'sections':{},'missing':[]}
+    report={'mode':mode,'config_modified':False,'provenance':data.get('provenance'), 'failures':data.get('failures',[]), 'sections':{},'missing':[]}
     specs={'grade.pass_score':('grade_samples',lambda x:threshold_scan(x,objective='youden_j')),
            'postprocess.support_threshold':('support_pairs',lambda x:threshold_scan(x,objective='f1')),
            'rerank.threshold':('rerank_trials',rerank_loss),
@@ -129,8 +129,14 @@ def calibrate(data, *, mode):
         if not data.get(key):
             report['missing'].append(name)
         else:
-            report['sections'][name]=func(data[key])
-    report['real_calibration_complete']= mode=='real' and bool(report['provenance']) and not report['missing'] and all(
+            try:
+                report['sections'][name]=func(data[key])
+            except ValueError as exc:
+                # 某项单类/无效观测不能丢掉其他六项实测证据。
+                report['sections'][name]={'verified':False,'recommended':None,
+                                          'samples':len(data[key]),'error':str(exc)}
+                report['missing'].append(name)
+    report['real_calibration_complete']= mode=='real' and bool(report['provenance']) and not report['missing'] and not report['failures'] and all(
         not v.get('missing_weights') and not v.get('missing_values') and v.get('verified',True)
         for v in report['sections'].values() if isinstance(v,dict))
     return report

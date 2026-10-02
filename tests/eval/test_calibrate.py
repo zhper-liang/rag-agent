@@ -69,3 +69,17 @@ def test_cli_all_seven_sections_never_writes_configuration(tmp_path):
     assert report['sections']['context.token_safety_factor']['recommended']==1.1
     assert Path('config.yaml').read_bytes()==cfg_before
     assert not calibrate(data,mode='real')['real_calibration_complete']  # 缺实测来源
+
+
+def test_real_calibration_preserves_other_sections_when_labels_single_class():
+    data = {'provenance': {'mode':'real'},
+            'grade_samples':[{'score':.8,'label':True}],
+            'support_pairs':[{'score':.7,'label':False}],
+            'rerank_trials':[{'threshold':.3,'candidates':[{'chunk_id':'x','score':.8}], 'gold':[['x']]}],
+            'failures':[{'phase':'support','error_type':'TimeoutError'}]}
+    report = calibrate(data, mode='real')
+    assert not report['real_calibration_complete']
+    assert report['sections']['grade.pass_score']['verified'] is False
+    assert 'postprocess.support_threshold' in report['missing']
+    assert report['sections']['rerank.threshold']
+    assert report['failures'] == data['failures']

@@ -21,6 +21,7 @@ from ragas.metrics import (AnswerCorrectness, Faithfulness, LLMContextPrecisionW
                            LLMContextRecall, ResponseRelevancy)
 from ragas.run_config import RunConfig
 
+from eval.calls import counted_calls, current_summary
 from eval.embeddings import LocalEmbeddings
 from ragagent.config import load_config
 from ragagent.llm.client import build_client, close_clients, endpoint_semaphore
@@ -175,16 +176,27 @@ class RagasScorer:
             raise ValueError(f'Chinese validation needs {count} answerable samples, only {len(rows)} provided')
         results = []
         for r in rows[:count]:
-            measured = await self(r['case'], r['state'])
-            direct = await self.direct_scores(r['case'], r['state'])
-            results.append({'id': r['case']['id'], 'ragas': measured, 'direct': direct})
-        mae = {k: sum(abs(r['ragas'][k]-r['direct'][k]) for r in results)/count for k in self.metric_names}
+            try:
+                measured = await self(r['case'], r['state'])
+                direct = await self.direct_scores(r['case'], r['state'])
+                results.append({'id': r['case']['id'], 'status': 'ok', 'ragas': measured, 'direct': direct})
+            except Exception as exc:
+                results.append({'id': r['case']['id'], 'status': 'failed', 'error_type': type(exc).__name__})
+            print(f"chinese={len(results)}/{count} status={results[-1]['status']}", flush=True)
+        valid = [r for r in results if r['status'] == 'ok']
+        mae = {k: sum(abs(r['ragas'][k]-r['direct'][k]) for r in valid)/len(valid) if valid else None for k in self.metric_names}
         return {'samples':count, 'mean_absolute_difference':mae, 'max_difference':max_difference,
-                'needs_prompt_adaptation':any(v > max_difference for v in mae.values()),
+                'needs_prompt_adaptation':any(v is None or v > max_difference for v in mae.values()),
+                'successful_samples':len(valid), 'missing':count-len(valid),
                 'reserved_calls':self.budget.used, 'cases':results}
 
 
 async def _main(args):
+    with counted_calls(args.max_calls, ledger=Path(args.output).with_suffix('.calls.json')):
+        return await _main_open(args)
+
+
+async def _main_open(args):
     cfg = load_config(args.config)
     samples = [json.loads(s) for s in Path(args.input).read_text().splitlines() if s.strip()]
     scorer = RagasScorer(cfg, max_calls=args.max_calls, prompt_dir=args.prompt_dir)
@@ -194,10 +206,11 @@ async def _main(args):
         else:
             report = {'cases':[{'id':r['case']['id'], 'scores':await scorer(r['case'],r['state'])} for r in samples],
                       'reserved_calls':scorer.budget.used}
+        report.update(current_summary())
         Path(args.output).parent.mkdir(parents=True, exist_ok=True)
         Path(args.output).write_text(json.dumps(report, ensure_ascii=False, indent=2, allow_nan=False)+'\n')
         print(f'samples={len(samples)} reserved_calls={scorer.budget.used} output={args.output}')
-        return int(report.get('needs_prompt_adaptation', False))
+        return int(report.get('needs_prompt_adaptation', False) or report.get('missing', 0) > 0)
     finally:
         await close_clients()
 

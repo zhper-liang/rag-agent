@@ -248,3 +248,27 @@ def test_cli_closes_llm_on_generation_error(monkeypatch, tmp_path):
         asyncio.run(module._main(args))
     assert events == ['closed']
     assert observability.get_metrics() is sentinel
+
+
+def test_parallel_generation_reserves_doc_caps_and_resumes_without_extra_requests():
+    """多个待决题争同一文档名额；恢复时保留已接受题而不会重新占用名额。"""
+    active = peak = sequence = 0
+    async def call(*args):
+        nonlocal active, peak, sequence
+        sequence += 1
+        number = sequence
+        active += 1; peak = max(peak, active)
+        await asyncio.sleep(.01)
+        active -= 1
+        prompt = json.loads(args[-1][-1].content)
+        return question(prompt['type'], number, prompt['chunks']), None
+    cs = [{**chunk(str(i)), 'doc_id': f'{i:016x}'} for i in range(3)]
+    cfg = config(counts={'single': 8}, max_per_doc=2, max_regen=0)
+    records, stats = asyncio.run(generate(cs, cfg, call=call, embed=embed, retrieve=retrieve, concurrency=4))
+    assert peak >= 2 and len(records) == 6 and sequence == 6
+    assert stats['missing'] == {'single': 2}
+    assert set(stats['per_doc'].values()) == {2}
+    restored, second = asyncio.run(generate(cs, cfg, call=call, embed=embed, retrieve=retrieve,
+                                           concurrency=4, resume_records=records))
+    assert restored == records and sequence == 6
+    assert second['resumed_records'] == 6 and second['missing'] == {'single': 2}

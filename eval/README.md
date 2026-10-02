@@ -5,12 +5,13 @@
 - `--fixture` **仅为合成壳验证**：消费 P0 夹具，所有生成/评分数值都标记 fixture；
   基线独立存放 `eval/baselines/fixtures/`，不会创建生产基线。不能用于 M4 或阈值决策。
 - 真实评测直接调用 L2 quick / L3 graph，不挂 Langfuse，关闭 RAGAS 遥测。
-  Milvus/登记表只读，临时集合由 L1 构建并使用 `l4_` 前缀。本线不使用 GPU。
-- `.env` 只通过 `uv run --env-file .env` 加载，不输出密钥。D-002 已允许免费额度 API；
-  批量前仍应确认接入点的免费额度及本批次上限。下面命令中的 `N` 必须替换为本次确认的调用数。
-- `--max-calls` 限制出题/独立 RAGAS 评测模型请求；`eval.run --max-eval-calls` 仅限制评分/判定，
-  不包含 eval.run 的 L2 预处理和 L3 生成链调用。它们按问题数及主备/重试配置另行估算额度。
-  出题器的无答案过滤中预处理也计入该出题批次的 `--max-calls`。
+  生产 Milvus/登记表只读；校准通过 L1 已交付接口构建 `l4_` 临时集合。
+  本线消费 8001 HTTP 编码/重排服务，不启动 GPU。
+- `.env` 只通过 `uv run --env-file .env` 加载，不输出密钥。D-008~D-012 已授权真实批量运行和两条 masked 合成云端冒烟。
+  下面命令中的 `N` 必须替换为本批次显式调用上限。
+- 所有真实 CLI 必须显式 `--max-calls`；发送 HTTP 请求前按实际次数限制，包含主备、重试、
+  L2 预处理、L3 生成及 judge。`eval.run --max-eval-calls` 是 judge 的额外保守预约上限。
+  `.calls.json` 记录实际发送次数、状态/异常类和 usage，不包含文本或密钥；embed/rerank 不计 LLM 请求。
 - 本地报告/状态导出包含真实问题、上下文和答案，不能提交/复制到测试或上传到 Langfuse。
 
 ## 快速自检（无任何外部服务调用）
@@ -38,9 +39,9 @@ uv run python -m eval.run --tier full --fixture --fixture-regression
 uv run --env-file .env python -m eval.generate --chunks current.jsonl --max-calls N \
   --output eval/datasets/v1.jsonl
 uv run --env-file .env python -m eval.run --tier quick --chunks current.jsonl \
-  --dataset eval/datasets/v1.jsonl
+  --dataset eval/datasets/v1.jsonl --max-calls N
 uv run --env-file .env python -m eval.run --tier full --chunks current.jsonl \
-  --dataset eval/datasets/v1.jsonl --max-eval-calls N \
+  --dataset eval/datasets/v1.jsonl --max-calls N --max-eval-calls N \
   --states-output eval/reports/actual-samples.jsonl
 # 经检查后显式加 --update-baseline；完整档首次需要两倍问题/评分预算
 ```
@@ -74,6 +75,11 @@ def create_deps(cfg, collection):
 
 出题数量/文档上限/最短chunk与quote/照抄过滤/向量去重/重出次数全部读 `eval.generate`。
 只读取当前版本可检索chunk，按文档轮转抽样；失败及缺题写 `.generation.json`，不足返回1。
+`--concurrency` 默认为1；并发生成按题型轮转并预留文档名额，保证去重和每文档上限。
+每个接受题即时落盘，可用 `--resume-from` 从已有 JSONL 续跑（输出使用新文件）；恢复继承名额、
+题型计数和去重向量，必须合并原批与恢复批 `.calls.json` 的实际次数。无答案题的恢复需
+`gen.source_doc_ids`；题号沿用。后端异常、缺题和中断保留，不自动补成成功。
+
 `gold` 始终是 doc_id/version/quote，不绑定chunk_id。多轮前轮有answer，末轮有standalone；
 跨段必须分别有两个chunk的quote；image单段必须带image标签；keyword由出题prompt识别精确词。
 
@@ -114,6 +120,25 @@ JSON输入格式（每节都是实测记录列表；空节保持未完成）：
 | `retrieval_trials` | `{candidates,search_list,ranked,gold,latency_s}` |
 | `token_samples` | `{chunk_id,tokens,prompt_tokens,fixed_overhead}` |
 | `chunk_trials` | `{target_tokens,ranked,gold,latency_s}` |
+
+真实采集入口（每阶段独立文件，显式预算；生产索引不改）：
+
+```bash
+uv run --env-file .env python -m eval.collect_calibration --phase tokens \
+  --chunks current.jsonl --output tokens.json --max-calls 1001
+uv run --env-file .env python -m eval.collect_calibration --phase retrieval \
+  --chunks current.jsonl --dataset cases.jsonl --output retrieval.json --max-calls 1
+uv run --env-file .env python -m eval.collect_calibration --phase chunks \
+  --chunks current.jsonl --dataset cases.jsonl --output chunks.json --max-calls 1 \
+  --collection-prefix l4_calibration_unique
+uv run --env-file .env python -m eval.collect_calibration --phase support \
+  --chunks current.jsonl --states actual-samples.jsonl --output support.json --max-calls N
+```
+
+切分实验仅重切抽样问题涉及文档及5%干扰文档，256/400/600正式接口切分、编码、入库后真实检索。
+已存在的集合拒绝覆盖；报告须写明样本数、文档数和 stale gold。检索阶段用末轮/standalone问题，
+不调用预处理 LLM。支撑阶段只消费真实答案的句子-引用对，不制造负例；缺任一类别标记未完成。
+采集阶段分别保留失败与 ledger，合并观测后运行校准分析；建议不自动写配置。
 
 另提供 `provenance`（数据集版本/索引collection/模型/配置hash/实测日志），供人工复核；
 `--mode real` 只是声明输入来源，不能替代独立的真实性审计。

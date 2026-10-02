@@ -1,6 +1,7 @@
 """Langfuse4.16 masked client/handler；无密钥、禁用、上传故障都不影响问答。"""
 from __future__ import annotations
 
+import base64
 import logging
 import os
 from dataclasses import asdict, is_dataclass
@@ -135,6 +136,23 @@ def build_client(cfg, *, env=None, **sdk_options):
     if {"mask", "public_key", "secret_key", "host", "base_url"} & sdk_options.keys():
         raise ValueError("cannot override masked client configuration")
     try:
+        # OTEL 默认 urllib3 transport 不读取 HTTP(S)_PROXY；requests 使用环境代理。
+        # 自定义 exporter 保留 Langfuse v4 实时摄取协议及 SDK 的 mask 包装。
+        if "span_exporter" not in sdk_options and any(
+            env.get(k) for k in ("HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy")
+        ):
+            import requests
+            from opentelemetry.exporter.otlp.proto.http.trace_exporter import OTLPSpanExporter
+            from importlib.metadata import version
+            credentials = base64.b64encode(f"{public}:{secret}".encode()).decode("ascii")
+            sdk_options["span_exporter"] = OTLPSpanExporter(
+                endpoint=settings.host.rstrip("/") + "/api/public/otel/v1/traces",
+                headers={"Authorization": "Basic " + credentials,
+                         "x-langfuse-public-key": public, "x-langfuse-sdk-name": "python",
+                         "x-langfuse-sdk-version": version("langfuse"),
+                         "x-langfuse-ingestion-version": "4"},
+                session=requests.Session(), timeout=sdk_options.get("timeout", 5),
+            )
         client = Langfuse(public_key=public, secret_key=secret, base_url=settings.host,
                           mask=mask, **sdk_options)
         if client._mask is not mask:
