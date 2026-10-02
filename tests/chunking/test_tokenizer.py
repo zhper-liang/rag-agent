@@ -43,6 +43,9 @@ def test_real_bge_six_properties(counter,blocks):
     for b in blocks:
         if b.type=='image':
             pos+=len(f'[图: {b.text}]\n\n')
+        elif b.type=='heading':
+            # source_spans 使用原始渲染坐标，不能用排除空标题的覆盖 oracle。
+            pos+=len('#'*b.level+' '+b.text+'\n\n')
         else:
             pos+=len(canonical([b]))
         boundaries.add(pos)

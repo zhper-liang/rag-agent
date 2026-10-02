@@ -35,6 +35,8 @@ def mixed_blocks(draw):
     for i in range(draw(st.integers(1, 14))):
         if draw(st.booleans()):
             out.append(Block(type='heading', text=f'章节{i}', level=draw(st.integers(1,6))))
+            if draw(st.booleans()):
+                continue  # D-014：允许生成空叶节及只有标题的子树。
         kind = draw(st.sampled_from(['paragraph', 'code', 'table', 'list', 'equation', 'image']))
         if kind == 'code':
             text = ''.join(f'x{i} = {s!r}\n' for s in draw(st.lists(TEXT, min_size=1,max_size=4)))
@@ -53,9 +55,23 @@ def mixed_blocks(draw):
 
 
 def canonical(blocks):
-    """独立 oracle：正文块按 Markdown 渲染，不包含图片占位符。"""
+    """D-014 A 的独立 oracle：排除空标题及图片占位符，其余逐字渲染。
+
+    直接遍历输入层级：遇到非标题 Block 时标记其所有标题祖先为有内容。
+    不读取生产标题树/packer 的选择结果，避免实现和判定共用逻辑。
+    """
+    stack, retained_headings = [], set()
+    for i, b in enumerate(blocks):
+        if b.type == 'heading':
+            while stack and blocks[stack[-1]].level >= b.level:
+                stack.pop()
+            stack.append(i)
+        else:
+            retained_headings.update(stack)
     parts = []
-    for b in blocks:
+    for i, b in enumerate(blocks):
+        if b.type == 'heading' and i not in retained_headings:
+            continue
         if b.type == 'image':
             continue
         if b.type == 'heading':
@@ -79,6 +95,13 @@ def test_tokens_never_exceed_max(blocks):
 @given(st.lists(TEXT, min_size=1,max_size=15))
 def test_full_coverage_removing_overlap(texts):
     blocks = [Block(type='paragraph',text=s) for s in texts]
+    chunks = run_chunk(document(blocks), cfg=config(), count=len)
+    assert restore_text(chunks) == canonical(blocks)
+
+
+@settings(max_examples=120, deadline=None)
+@given(mixed_blocks())
+def test_full_coverage_mixed_with_empty_headings(blocks):
     chunks = run_chunk(document(blocks), cfg=config(), count=len)
     assert restore_text(chunks) == canonical(blocks)
 
