@@ -114,6 +114,29 @@ def test_cache_key_history_prompt_models_and_nonpreprocess(tmp_path):
     assert len(list(tmp_path.glob('*.json')))==4
 
 
+def test_cache_wraps_real_preprocess_dict_messages_without_degrading(tmp_path):
+    # 回归：call_structured 传 dict 消息，缓存曾对其调 model_dump，异常被吞掉导致预处理全部降级。
+    from eval.cache import PreprocessCache
+    from ragagent.config import Config
+    from ragagent.graph.deps import Deps
+    from ragagent.preprocess.llm import preprocess_question
+    cfg=Config.model_validate(yaml.safe_load(Path('config.yaml').read_text()))
+    calls=[]
+    async def call(scene,eps,schema,messages):
+        assert all(isinstance(m,dict) for m in messages)
+        calls.append(1)
+        # 与真实 structured_call 一致：返回 schema 实例。
+        return schema.model_validate({'intent':'rag','standalone_question':'合成测试问题'}),scene.primary
+    async def run():
+        cache=PreprocessCache(cfg,call,tmp_path)
+        deps=Deps(cfg,len,structured_call=cache)
+        for _ in range(2):
+            result=await preprocess_question('合成测试问题',[],None,deps)
+            assert not result['preprocess_degraded'] and result['queries']==['合成测试问题']
+        assert len(calls)==1 and (cache.hits,cache.misses)==(1,1)
+    asyncio.run(run())
+
+
 def test_actual_adapter_uses_graph_context_and_original_sidecar(monkeypatch):
     import ragagent.retrieval.pipeline as pipeline
     import ragagent.graph.build as graphmodule

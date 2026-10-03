@@ -5,6 +5,11 @@ import os
 from pathlib import Path
 
 
+def _message_key(message):
+    # 预处理 call_structured 传 OpenAI 风格 dict；保留 langchain 消息对象的兼容。
+    return message if isinstance(message,dict) else message.model_dump(mode='json')
+
+
 class PreprocessCache:
     def __init__(self, cfg, call, directory):
         self.cfg,self.call,self.directory=cfg,call,Path(directory)
@@ -13,7 +18,7 @@ class PreprocessCache:
     async def __call__(self, scene, eps, schema, messages):
         if schema.__name__!='Preprocessed':
             return await self.call(scene,eps,schema,messages)
-        metadata={'messages':[m.model_dump(mode='json') for m in messages],
+        metadata={'messages':[_message_key(m) for m in messages],
                   'prompt_version':self.cfg.prompt.version,'preprocess':self.cfg.preprocess.model_dump(mode='json'),
                   'scene':scene.model_dump(mode='json'),
                   'endpoints':{name:eps[name].model_dump(mode='json') for name in (scene.primary,scene.fallback)}}
