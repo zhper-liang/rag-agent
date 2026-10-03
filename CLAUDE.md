@@ -4,14 +4,16 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-This repo is a RAG Q&A system (LangGraph + Milvus DISKANN). P0 (skeleton, contracts, fixtures, stubs, Milvus; see `docs/开发计划.md` §3) is done. The four parallel lines L1–L4 (`开发计划.md` §4) are now built by four Claude Code windows at once; see "Parallel lines" below. The git repo is on `main`. It holds:
+This repo is a RAG Q&A system (LangGraph + Milvus DISKANN). P0 and the four parallel lines L1–L4 (`docs/开发计划.md` §3–§4) are done, and the four-window protocol ended on 2026-10-03; work is now a single session on `main`. Milestone status is in `开发计划.md` §6: M1b is done as a local pipeline (MinerU cloud checks deferred, D-018 B), M4 runs end to end (471 questions, no full baseline yet), and M5 deployment is deferred. It holds:
 
 - 12 Chinese design docs in `docs/`. `docs/总揽.md` is the entry point. It has the architecture, the LangGraph state and graph, the tech stack, the directory tree (§6) and the decision log (§7).
 - `config.yaml`: every tunable parameter for the whole system. `src/ragagent/config.py` models it and validates it at startup.
 - `prompts/v1/*.j2`: the real Jinja2 prompt templates.
-- `src/ragagent/{ingest,index,retrieval,preprocess,context,prompt,llm,postprocess,graph,api,monitor}`: so far only the contract models (`models.py`, `preprocess/schema.py`, `graph/state.py`) and `index/schema.py`. Each doc's "目录与模块" section says what goes where. `eval/` is still empty.
-- `tests/`: contract tests (every doc model must match its `models.py` definition via AST), fixtures in `tests/fixtures/`, and three stub services in `tests/stubs/` (embed + rerank, OpenAI-compatible LLM).
-- `docker-compose.milvus.yml` + `milvus.yaml`: Milvus 2.5.18 standalone. MinIO credentials come from `.env`.
+- `src/ragagent/{ingest,index,retrieval,preprocess,context,prompt,llm,postprocess,graph,api,monitor}`: the implemented packages. Each doc's "目录与模块" section says what goes where. `api/static/` is the same-origin demo page (`总揽.md` §4.3).
+- `eval/`: question generation, the quick/full eval CLI, RAGAS scoring and calibration (`eval/README.md`). Reports and datasets built from the real corpus stay gitignored.
+- `tests/`: unit and integration tests, contract tests (every doc model must match its `models.py` definition via AST), fixtures in `tests/fixtures/`, and three stub services in `tests/stubs/` (embed + rerank, OpenAI-compatible LLM).
+- `docker-compose.milvus.yml` + `milvus.yaml`: Milvus 2.5.18 standalone. MinIO credentials come from `.env`. The production collection name `rag_chunks` is an alias for the real index (D-019).
+- `claude-codex/`: the archived board, status and decision files of the parallel lines. Read-only history now.
 
 Talk to the user in Chinese. Docs are also written in Chinese.
 
@@ -21,17 +23,14 @@ Commands (Python 3.12 via uv; don't invent others):
 - Milvus: `docker compose -f docker-compose.milvus.yml up -d` / `down`. etcd, MinIO and Milvus metadata are in `volumes/` (gitignored). Milvus's local cache (`localStorage.path`: mmap and DiskANN files) is in the named volume `milvus_local`, because on Docker Desktop bind mounts go through virtiofs and make mmap loads about 80x slower (向量化建库 §6.4).
 - Milvus smoke: `uv run --env-file .env python scripts/milvus_smoke.py`. It uses its own `rag_chunks_smoke` collection.
 - Milvus measurements (向量化建库 §6.4): `uv run --env-file .env python scripts/milvus_bench.py {mmap,recall}`. They take minutes and release other loaded collections.
+- Embed + rerank service (GPU, port `services.embed.port`): `uv run --env-file .env python -m ragagent.index.embed_service`.
+- API (needs Milvus and the embed service): `uv run --env-file .env uvicorn ragagent.api.app:create_app --factory --host 127.0.0.1 --port 8000`. The demo page is `http://127.0.0.1:8000/`. There is no auth, so bind only to localhost or a trusted intranet.
+- Eval: `uv run python -m eval.run --tier {quick,full} --fixture` offline; real runs need `--env-file .env`, `--chunks` and an explicit `--max-calls` (`eval/README.md`).
 - Stubs standalone: `uv run python -m tests.stubs.embed_server` (also serves rerank), `tests.stubs.rerank_server` (8002), `tests.stubs.llm_server` (8003). All take `--port`; the embed stub defaults to `services.embed.port`.
 
-## Parallel lines
+## Parallel lines (ended)
 
-Four windows (L1–L4) work in this same checkout on `main` at the same time. If you were told you are one of them, read `claude-codex/README.md` and your brief `claude-codex/L{n}.md` before anything else. They override the general workflow here in three ways:
-
-- **File ownership.** Edit only the files your line owns (README §3). Shared files (`config.yaml`, `config.py`, `graph/state.py`, existing `models.py`, `tests/fixtures/`, `tests/stubs/`, `docs/`, `prompts/`, `pyproject.toml`) change only through README §6.
-- **"Discuss first" goes through the board, not the chat.** Raise design changes as an entry in `claude-codex/待决.md` with `claude-codex/board.sh post 待决 …`. Then keep working on everything that doesn't depend on the answer; the user rules there.
-- **Git and other shared resources.** Commit only your own paths, inside the `git` lock: `claude-codex/board.sh run git L{n} -- bash -c 'git add -- <paths> && git commit -m "…" -- <paths>'`. Never `git add .`/`-A`, `stash`, `reset`, `checkout --`, `restore`, `clean` or `--amend`: they touch the other windows' work. Ports, Milvus collection prefixes, the GPU and LLM call limits are in README §9.
-
-Talk to other lines only through `claude-codex/board.sh post 消息 …`, and check `board.sh inbox` at every phase boundary.
+L1–L4 ran as four Claude Code windows from 2026-10-01 to 2026-10-03 under `claude-codex/README.md`. The protocol is over: don't post to the board or take its locks. The general git rules still hold: commit only specific paths, and never `git add .`/`-A`, `stash`, `reset`, `checkout --`, `restore`, `clean` or `--amend`.
 
 ## How design work is done here
 
@@ -99,4 +98,4 @@ Each of these contracts spans several docs. Change one side and you must change 
 
 ## Progress tracking
 
-Track multi-step work with the `planning-with-files-zh` skill. A single session keeps `task_plan.md` / `findings.md` / `progress.md` in the repo root. A parallel line keeps them in `.planning/L{n}/`, and its window must be started with `PLAN_ID=L{n}` so the skill's hooks read that directory and not another line's. Both locations are gitignored.
+Track multi-step work with the `planning-with-files-zh` skill. The session keeps `task_plan.md` / `findings.md` / `progress.md` in the repo root (gitignored). `.planning/L{n}/` holds the archived plans and evidence of the parallel lines.
