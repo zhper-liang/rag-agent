@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>RAG 问答演示</title>
+  <link rel="icon" href="/static/favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="/static/style.css">
+  <script type="module" src="/static/app.js"></script>
+</head>
+<body>
+  <header class="top">
+    <div>
+      <h1>RAG 问答演示</h1>
+      <p class="sub">本地演示页，接口没有鉴权，只在本机或可信内网打开。</p>
+    </div>
+    <button type="button" id="new-chat">新会话</button>
+  </header>
+
+  <main id="log" aria-label="对话记录">
+    <p class="empty" id="empty">输入问题开始。回答里的 [n] 指向下方来源，灰色表示没能在资料中核实。</p>
+  </main>
+
+  <form id="ask" class="ask">
+    <label for="question" class="sr-only">问题</label>
+    <textarea id="question" rows="2" placeholder="输入问题，Enter 发送，Shift+Enter 换行" required></textarea>
+    <div class="actions">
+      <button type="submit" id="send">发送</button>
+      <button type="button" id="stop" hidden>停止</button>
+    </div>
+  </form>
+
+  <div id="status" class="sr-only" role="status" aria-live="polite"></div>
+</body>
+</html>

@@ -1,6 +1,7 @@
-"""问答SSE、SQLite会话历史、登记表原文下载、L4反馈与指标挂载。
+"""问答SSE、SQLite会话历史、登记表原文下载、L4反馈与指标挂载、演示页。
 
 POST /api/chat接口按D-006 A定型；生产工厂：uvicorn ragagent.api.app:create_app --factory。
+GET / 是同源静态演示页（api/static/），接口没有鉴权，只在本机或可信内网开放。
 """
 from __future__ import annotations
 
@@ -17,6 +18,7 @@ from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.staticfiles import StaticFiles
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from pydantic import BaseModel, ConfigDict, Field, StrictStr, field_validator
 
@@ -35,6 +37,13 @@ from ragagent.retrieval.filters import validate_filters
 
 DOC_ID = re.compile(r'[0-9a-f]{16}')
 SESSION_ID = re.compile(r'[A-Za-z0-9_-]{1,128}')
+STATIC = Path(__file__).parent / 'static'
+# 演示页只加载同源脚本/样式/图片；回答里的原始HTML由render.js转义，CSP再兜一层。
+DEMO_HEADERS = {
+    'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; "
+                               "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
+    'X-Content-Type-Options': 'nosniff', 'Referrer-Policy': 'no-referrer',
+}
 log = logging.getLogger(__name__)
 
 
@@ -229,4 +238,9 @@ def create_app(cfg=None, *, deps=None, graph=None, graph_factory=build_graph, me
             raise HTTPException(404, '图片不存在')
         return FileResponse(target, headers={'X-Content-Type-Options': 'nosniff'})
 
+    @app.get('/', include_in_schema=False)
+    async def demo_page():
+        return FileResponse(STATIC / 'index.html', media_type='text/html', headers=DEMO_HEADERS)
+
+    app.mount('/static', StaticFiles(directory=STATIC), name='static')
     return app
