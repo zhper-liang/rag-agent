@@ -170,7 +170,7 @@ prompt:
 llm:
   endpoints:
     main:
-      base_url: "https://api.xiaomimimo.com/v1"                    # 待填
+      base_url: "https://mimo.ezlook.top/v1"                    # 待填
       model: "mimo-v2.6-pro"                       # 待填
       api_key_env: LLM_MAIN_KEY
       vision: true                    # 是否支持图片输入；false 时原图降级为说明文字
@@ -179,7 +179,7 @@ llm:
       max_concurrency: 8              # 本进程内同时发出的请求数
       extra_body: {}                  # 服务商特有参数，原样透传
     main_backup:
-      base_url: "https://api.xiaomimimo.com/v1"
+      base_url: "https://mimo.ezlook.top/v1"
       model: "mimo-v2.6-pro"
       api_key_env: LLM_MAIN_BACKUP_KEY
       vision: true
@@ -188,7 +188,7 @@ llm:
       max_concurrency: 8
       extra_body: {}
     small:
-      base_url: "https://api.xiaomimimo.com/v1"
+      base_url: "https://mimo.ezlook.top/v1"
       model: "mimo-v2.6-flash"
       api_key_env: LLM_SMALL_KEY
       vision: true
@@ -197,7 +197,7 @@ llm:
       max_concurrency: 16
       extra_body: {}
     small_backup:
-      base_url: "https://api.xiaomimimo.com/v1"
+      base_url: "https://mimo.ezlook.top/v1"
       model: "mimo-v2.6-flash"
       api_key_env: LLM_SMALL_BACKUP_KEY
       vision: true
