@@ -120,7 +120,7 @@ retrieval:
   dense_top_k: 50
   sparse_top_k: 50
   search_list: 100                    # DISKANN 检索参数，必须 ≥ top_k
-  weights: {dense: 0.7, sparse: 0.3}
+  weights: {dense: 0.5, sparse: 0.5}  # M4 校准：Recall@30 0.911（0.7 档 0.869）
   per_query_limit: 50
   candidates: 30                      # 送进重排的数量
   timeout_ms: 1000
@@ -139,7 +139,7 @@ expansion:
   images_total: 4
 
 grade:
-  pass_score: 0.5
+  pass_score: 0.4                     # M4 校准：J 最优点 0.333 紧贴无答案题最高分 0.322，取 0.4 留余量（J 0.917）
   max_retries: 2
 
 # ───────── 在线：上下文构造（上下文构造.md）─────────
@@ -210,7 +210,7 @@ llm:
       primary: main
       fallback: main_backup
       temperature: 0.2
-      max_tokens: 2048
+      max_tokens: 4096                # 2048 时长回答被截断（L3 实测 2/5）
       first_token_timeout_s: 10       # 每次尝试等首个 token 的时间
       pre_first_token_budget_s: 30    # 首个 token 之前的总时长上限（含重试和切换）
       total_timeout_s: 90

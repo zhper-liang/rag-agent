@@ -100,13 +100,16 @@ def test_top_score_taken_before_threshold_filter_and_empty_skips_http():
     asyncio.run(run())
 
 
-@pytest.mark.parametrize("score,retries,degraded,expected", [
-    (.5, 0, False, "build_context"), (.49, 0, False, "rewrite"),
-    (.49, 1, False, "rewrite"), (.49, 2, False, "fallback"),
-    (0, 2, True, "build_context"),
+# 分数相对 grade.pass_score 给出，校准改值后边界仍然被测到。
+@pytest.mark.parametrize("delta,retries,degraded,expected", [
+    (0, 0, False, "build_context"), (-.01, 0, False, "rewrite"),
+    (-.01, 1, False, "rewrite"), (-.01, 2, False, "fallback"),
+    (None, 2, True, "build_context"),
 ])
-def test_grade_three_branches_and_degradation(score, retries, degraded, expected):
-    runtime = SimpleNamespace(context=Deps(config(), len))
+def test_grade_three_branches_and_degradation(delta, retries, degraded, expected):
+    cfg = config()
+    score = 0 if delta is None else cfg.grade.pass_score + delta
+    runtime = SimpleNamespace(context=Deps(cfg, len))
     assert route_after_rerank({"retrieval": {"top_score": score, "degraded": degraded}, "retry_count": retries}, runtime) == expected
 
 
