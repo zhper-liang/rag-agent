@@ -12,7 +12,7 @@ from ragagent.index.milvus import connect, ensure_collection, load, wait_indexed
 from ragagent.index.writer import delete_document, flush, index_document
 from ragagent.ingest.chunking.models import Chunk
 from ragagent.ingest.models import CleanDocument
-from ragagent.ingest.registry_db import IngestLocked, RegistryDB, ingest_lock
+from ragagent.ingest.registry_db import RegistryDB
 
 
 def run_index(chunk_dir: str | Path | None = None, *, cfg: Config | None = None,
@@ -107,12 +107,9 @@ def main():
     parser.add_argument('--no-wait', action='store_true', help='只flush，不等待索引或load')
     args = parser.parse_args()
     cfg = load_config()
-    try:
-        with ingest_lock(cfg.paths.ingest_lock), Embedder(args.embed_url, cfg=cfg) as emb:
-            report = run_index(args.chunk_dir, cfg=cfg, emb=emb, collection=args.collection,
-                               wait=not args.no_wait, force=args.force)
-    except IngestLocked as exc:
-        raise SystemExit(str(exc)) from None
+    with Embedder(args.embed_url, cfg=cfg) as emb:
+        report = run_index(args.chunk_dir, cfg=cfg, emb=emb, collection=args.collection,
+                           wait=not args.no_wait, force=args.force)
     print(json.dumps(report, ensure_ascii=False, default=str))
     if report['errors']:
         raise SystemExit(1)

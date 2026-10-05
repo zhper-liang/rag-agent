@@ -12,7 +12,6 @@ paths:
   registry_db: data/registry.db       # 文档登记表（含 FTS5 标题索引）
   session_db: data/sessions.db        # LangGraph checkpointer
   feedback_db: data/feedback.db       # 用户点赞点踩
-  ingest_lock: data/ingest.lock       # 入库独占锁：清洗和写索引命令同一时间只跑一个
   keep_versions: 2                    # 每个文档保留最近几个版本
 
 services:

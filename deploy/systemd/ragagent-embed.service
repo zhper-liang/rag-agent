@@ -1,0 +1,13 @@
+# 安装见 docs/服务化部署.md §4；%h/code/ragagent 与 %h/.local/bin/uv 按实际路径改。
+[Unit]
+Description=ragagent embed + rerank service (GPU)
+After=network.target
+
+[Service]
+WorkingDirectory=%h/code/ragagent
+ExecStart=%h/.local/bin/uv run --env-file .env python -m ragagent.index.embed_service
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

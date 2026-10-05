@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-This repo is a RAG Q&A system (LangGraph + Milvus DISKANN). P0 and the four parallel lines L1–L4 (`docs/开发计划.md` §3–§4) are done, and the four-window protocol ended on 2026-10-03; work is now a single session on `main`. Milestone status is in `开发计划.md` §6: M1b is done as a local pipeline (MinerU cloud checks deferred, D-018 B), M4 runs end to end (471 questions, no full baseline yet), and M5 is a single-host plan in `docs/服务化部署.md` (systemd user units for API + embed, compose for Milvus; monitoring stack, auth and backups deferred). It holds:
+This repo is a RAG Q&A system (LangGraph + Milvus DISKANN). P0 and the four parallel lines L1–L4 (`docs/开发计划.md` §3–§4) are done, and the four-window protocol ended on 2026-10-03; work is now a single session on `main`. Milestone status is in `开发计划.md` §6: M1b is done as a local pipeline (MinerU cloud checks deferred, D-018 B), M4 runs end to end (471 questions, no full baseline yet), and M5 is a single-host plan in `docs/服务化部署.md` (systemd user units in `deploy/systemd/` for API + embed, compose for Milvus; monitoring stack, auth, backups and an ingest lock deferred). It holds:
 
 - 13 Chinese design docs in `docs/`. `docs/总揽.md` is the entry point. It has the architecture, the LangGraph state and graph, the tech stack, the directory tree (§6) and the decision log (§7).
 - `config.yaml`: every tunable parameter for the whole system. `src/ragagent/config.py` models it and validates it at startup.
@@ -25,7 +25,6 @@ Commands (Python 3.12 via uv; don't invent others):
 - Milvus measurements (向量化建库 §6.4): `uv run --env-file .env python scripts/milvus_bench.py {mmap,recall}`. They take minutes and release other loaded collections.
 - Embed + rerank service (GPU, port `services.embed.port`): `uv run --env-file .env python -m ragagent.index.embed_service`.
 - API (needs Milvus and the embed service): `uv run --env-file .env uvicorn ragagent.api.app:create_app --factory --host 127.0.0.1 --port 8000`. The demo page is `http://127.0.0.1:8000/`. There is no auth, so bind only to localhost or a trusted intranet.
-- Offline ingest (`python -m ragagent.ingest.pipeline`, `python -m ragagent.index.pipeline`) takes the exclusive lock `paths.ingest_lock` and exits at once if another ingest is running.
 - Eval: `uv run python -m eval.run --tier {quick,full} --fixture` offline; real runs need `--env-file .env`, `--chunks` and an explicit `--max-calls` (`eval/README.md`).
 - Stubs standalone: `uv run python -m tests.stubs.embed_server` (also serves rerank), `tests.stubs.rerank_server` (8002), `tests.stubs.llm_server` (8003). All take `--port`; the embed stub defaults to `services.embed.port`.
 

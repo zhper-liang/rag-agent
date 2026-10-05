@@ -8,32 +8,11 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from datetime import datetime, timezone
-import fcntl
 from pathlib import Path, PurePosixPath
 import hashlib
 import re
 import sqlite3
 import unicodedata
-
-class IngestLocked(RuntimeError):
-    pass
-
-
-@contextmanager
-def ingest_lock(path: str | Path):
-    """入库独占锁（服务化部署 §8）：清洗与写索引命令互斥，拿不到立即失败，不排队。"""
-    path = Path(path)
-    path.parent.mkdir(parents=True, exist_ok=True)
-    with open(path, 'a') as handle:
-        try:
-            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
-            raise IngestLocked(f'已有入库任务在运行（锁文件 {path}）') from None
-        try:
-            yield
-        finally:
-            fcntl.flock(handle, fcntl.LOCK_UN)
-
 
 STATUSES = ('pending','parsing','cleaned','indexed','empty','duplicate','unsupported','failed','deleted')
 ID = re.compile(r'^[0-9a-f]{16}$')

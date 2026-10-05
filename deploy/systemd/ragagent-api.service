@@ -1,0 +1,14 @@
+# 安装见 docs/服务化部署.md §4；%h/code/ragagent 与 %h/.local/bin/uv 按实际路径改。
+[Unit]
+Description=ragagent QA API + demo page
+After=ragagent-embed.service
+Requires=ragagent-embed.service
+
+[Service]
+WorkingDirectory=%h/code/ragagent
+ExecStart=%h/.local/bin/uv run --env-file .env uvicorn ragagent.api.app:create_app --factory --host 127.0.0.1 --port 8000 --workers 1
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target
