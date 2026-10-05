@@ -395,6 +395,10 @@ class Alert(_Model):
     min_count: int | None = None
 
 
+class Api(_Model):
+    docs_list_limit: int = Field(ge=1, le=500)
+
+
 class Monitor(_Model):
     langfuse: Langfuse
     metrics: Metrics
@@ -424,6 +428,7 @@ class Config(_Model):
     llm: LLM
     postprocess: Postprocess
     eval: Eval
+    api: Api
     monitor: Monitor
     logging: Logging
 

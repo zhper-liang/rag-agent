@@ -114,6 +114,8 @@ def test_generation_both_endpoints_failed_error_no_final_or_history(tmp_path, ll
     ({'question': 'x' * 2001, 'session_id': 's'}, {}, 422),
     ({'question': 'q', 'session_id': 's', 'filters': {'expr': 'DROP'}}, {}, 422),
     ({'question': 'q', 'session_id': 's', 'filters': {'doc_ids': ['bad']}}, {}, 422),
+    ({'question': 'q', 'session_id': 's', 'use_scope': 'false'}, {}, 422),
+    ({'question': 'q', 'session_id': 's', 'use_scope': 0}, {}, 422),
 ])
 def test_request_validation_never_starts_graph(tmp_path, embed_url, body, headers, code):
     cfg = config(tmp_path)
@@ -149,6 +151,48 @@ def test_doc_download_registry_version_invalid_id_and_symlink(tmp_path, embed_ur
         (folder / 'full.md').symlink_to(tmp_path / 'secret.txt')
         (tmp_path / 'secret.txt').write_text('secret')
         assert client.get('/api/docs/0123456789abcdef/file').status_code == 404
+
+
+def test_doc_inline_view_is_sandboxed_plain_text(tmp_path, embed_url):
+    cfg = config(tmp_path)
+    populate_registry(cfg)
+    with api_client(cfg, deps(cfg, embed_url)) as client:
+        view = client.get('/api/docs/0123456789abcdef/file?inline=true')
+        assert view.status_code == 200 and view.text == '公开清洗原文'
+        assert view.headers['content-type'].startswith('text/plain') and view.headers['content-disposition'].startswith('inline')
+        assert 'sandbox' in view.headers['content-security-policy'] and view.headers['x-content-type-options'] == 'nosniff'
+        assert client.get('/api/docs/0123456789abcdef/file').headers['content-disposition'].startswith('attachment')
+
+
+def test_doc_list_indexed_only_no_paths_search_and_truncation(tmp_path, embed_url):
+    cfg = config(tmp_path)
+    with api_client(cfg, deps(cfg, embed_url)) as client:
+        assert client.get('/api/docs').json() == {'docs': [], 'truncated': False}
+    populate_registry(cfg)
+    with RegistryDB(cfg.paths.registry_db) as db:
+        for i, status in enumerate(['indexed', 'indexed', 'cleaned', 'deleted']):
+            doc, _ = db.register(f'docs/部署指南{i}.pdf', f'h{i}', file_type='pdf', parser='mineru-vlm', title=f'部署指南{i}')
+            db.update(doc['doc_id'], status=status, pages=3)
+    cfg = cfg.model_copy(update={'api': cfg.api.model_copy(update={'docs_list_limit': 2})})
+    with api_client(cfg, deps(cfg, embed_url)) as client:
+        full = client.get('/api/docs').json()
+        assert full['truncated'] and len(full['docs']) == 2
+        assert set(full['docs'][0]) == {'doc_id', 'title', 'file_type', 'pages', 'version'}
+        assert 'secret' not in json.dumps(full) and 'source_path' not in json.dumps(full)
+        hits = client.get('/api/docs', params={'q': '部署指南1'}).json()
+        assert [d['title'] for d in hits['docs']] == ['部署指南1'] and not hits['truncated']
+        assert client.get('/api/docs', params={'q': '部署指南2'}).json()['docs'] == []
+        assert client.get('/api/docs', params={'q': 'x' * 2001}).status_code == 422
+
+
+def test_use_scope_reaches_graph_state(tmp_path, llm_url, embed_url):
+    cfg = config(tmp_path, llm_url)
+    preprocess_script(llm_url, intent='chat', question='你好')
+    with api_client(cfg, deps(cfg, embed_url)) as client:
+        events(client.post('/api/chat', json={'question': '你好', 'session_id': 'u', 'use_scope': False}))
+        saved = client.portal.call(client.app.state.graph.aget_state, {'configurable': {'thread_id': 'u'}})
+        assert saved.values['use_scope'] is False and saved.values['soft_filters'] is None
+    assert initial_state('q', None)['use_scope'] is True
 
 
 def test_images_url_mapping_download_path_guards(tmp_path, embed_url):

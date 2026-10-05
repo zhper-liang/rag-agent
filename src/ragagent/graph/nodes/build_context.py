@@ -23,7 +23,9 @@ async def build_context(state: RAGState, runtime: Runtime[Deps]) -> dict:
                  "timings_ms": {**state.get("retrieval", {}).get("timings_ms", {}),
                                 "build_context": round((perf_counter() - start) * 1000)}}
     # ImageRef路径由API按约定映射为安全URL；此处不猜前端base_url。
-    emit(runtime, {"type": "meta", "scope_note": state.get("scope_note"),
+    # scoped：本次检索确实带了软过滤，前端据此显示“取消限定”；重试放宽后为false。
+    scoped = bool(state.get("soft_filters")) and state.get("use_soft", True)
+    emit(runtime, {"type": "meta", "scope_note": state.get("scope_note"), "scoped": scoped,
                    "attachments": [i.model_dump() for i in images]})
     return {"context_blocks": [b.model_dump() for b in blocks], "attachments": [i.model_dump() for i in images],
             "retrieval": retrieval}

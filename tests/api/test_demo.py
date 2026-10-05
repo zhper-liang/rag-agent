@@ -112,6 +112,20 @@ def test_render_markdown_blocks_sources_and_sse_frames():
     assert '<h4>标题</h4>' in blocks and '<ul><li>一</li><li>二</li></ul>' in blocks
     assert '<th scope="col">a</th>' in blocks and '<td>1</td>' in blocks and '<ol><li>x</li><li>y</li></ol>' in blocks
     assert '&lt;b&gt;手册&lt;/b&gt;' in items and 'id="t1-src-1"' in items and '第 12-13 页' in items
-    assert items.count('href="/api/docs/') == 1 and 'alt="&lt;图&gt;"' in items
+    assert items.count('href="/api/docs/0123456789abcdef/file?inline=true" target="_blank"') == 1
+    assert items.count('href="/api/docs/0123456789abcdef/file" download') == 1 and 'alt="&lt;图&gt;"' in items
     assert items.count('<img') == 1 and 'javascript' not in items
     assert sse == {'events': [{'type': 'token', 'text': 'a\n'}], 'rest': 'data: {"type":"fi'}
+
+
+def test_render_attachments_scope_label_and_doc_id():
+    attachments = [{'url': '/api/images/0123456789abcdef/v1/a.png', 'caption': '<架构图>'},
+                   {'url': 'https://evil.example/x.png', 'caption': 'x'}, {'url': None}]
+    html, empty, label, none, ok, bad = js(['renderAttachments', attachments], ['renderAttachments', None],
+        ['scopeLabel', {'file_types': ['pdf', 'docx'], 'doc_ids': ['0123456789abcdef', 'fedcba9876543210']},
+         {'0123456789abcdef': '<手册>'}],
+        ['scopeLabel', None], ['isDocId', '0123456789abcdef'], ['isDocId', '../etc'])
+    assert html.count('<img') == 1 and 'evil' not in html and '&lt;架构图&gt;' in html and '<figcaption>' in html
+    assert empty == '' and none == '' and ok is True and bad is False
+    # 纯文本，由 textContent 写入，不在这里转义。
+    assert label == '检索范围：pdf/docx 文件、《<手册>》、《fedcba9876543210》'

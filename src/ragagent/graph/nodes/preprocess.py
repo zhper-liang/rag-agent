@@ -1,4 +1,4 @@
-"""每轮初始化必须清空所有单轮字段；messages和硬过滤不清空（§13）。"""
+"""每轮初始化必须清空所有单轮字段；messages、硬过滤和use_scope不清空（§13）。"""
 
 from time import perf_counter
 
@@ -40,5 +40,9 @@ async def preprocess(state: RAGState, runtime: Runtime[Deps]) -> dict:
     retrieval = reset["retrieval"]
     retrieval["timings_ms"]["preprocess"] = round(elapsed * 1000)
     retrieval["preprocess"] = {"degraded": degraded, "intent": parsed["intent"]}
+    if not state.get("use_scope", True):
+        # “取消限定”重问：照常识别意图和查询，只丢弃从问题里识别出的范围；硬过滤不受影响。
+        parsed.update(soft_filters=None, scope_note=None)
+        scope_ids = []
     retrieval["scope_doc_ids"] = scope_ids
     return {**reset, **parsed}

@@ -96,6 +96,24 @@ def test_scope_conflict_drops_all_soft_and_retry_keeps_hard():
     asyncio.run(run())
 
 
+def test_use_scope_false_drops_soft_scope_keeps_hard_and_meta_scoped_flag():
+    async def run():
+        result = {'standalone_question': 'q', 'scope': {'file_types': ['PPT']}}
+        rt, _ = runtime(result)
+        scoped = await preprocess({'question': 'q'}, rt)
+        assert scoped['soft_filters'] == {'file_types': ['ppt', 'pptx']} and scoped['scope_note']
+        rt, _ = runtime(result)
+        update = await preprocess({'question': 'q', 'use_scope': False, 'filters': {'doc_ids': [A]}}, rt)
+        assert update['soft_filters'] is None and update['scope_note'] is None
+        assert update['filters'] == {'doc_ids': [A]} and update['queries'] and update['retrieval']['scope_doc_ids'] == []
+        # meta.scoped只在本次检索真带软过滤时为真；重试放宽（use_soft=False）后为假。
+        for soft, use_soft, expected in [({'file_types': ['ppt']}, True, True), ({'file_types': ['ppt']}, False, False), (None, True, False)]:
+            rt, events = runtime()
+            await build_context({'hits': [], 'expansions': {}, 'soft_filters': soft, 'use_soft': use_soft, 'scope_note': None}, rt)
+            assert events[-1]['scoped'] is expected
+    asyncio.run(run())
+
+
 def test_retrieve_rerank_context_preserve_summaries_budget_and_dict_contract():
     async def run():
         target, neighbor = link(chunk(0, text='部署服务需要配置端口'), chunk(1, searchable=False))
@@ -115,7 +133,7 @@ def test_retrieve_rerank_context_preserve_summaries_budget_and_dict_contract():
             assert neighbor['chunk_id'] in state['context_blocks'][0]['chunk_ids']
             assert not any(hasattr(item, 'model_dump') for item in state['hits'])
             json.dumps(state)
-            assert events[-1] == {'type': 'meta', 'scope_note': None, 'attachments': []}
+            assert events[-1] == {'type': 'meta', 'scope_note': None, 'scoped': False, 'attachments': []}
             assert [e['stage'] for e in events if e['type'] == 'progress'] == ['preprocessing', 'retrieving', 'reranking', 'building_context']
     asyncio.run(run())
 

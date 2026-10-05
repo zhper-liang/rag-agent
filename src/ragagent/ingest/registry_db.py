@@ -112,11 +112,16 @@ class RegistryDB:
 
     get = get_document
 
-    def list_documents(self,*,status=None):
+    def list_documents(self,*,status=None,limit=None):
         if status is not None and status not in STATUSES:
             raise ValueError('非法 status')
+        if limit is not None and not 1<=limit<=1000:
+            raise ValueError('非法 limit')
         sql = 'SELECT * FROM documents'+(' WHERE status=?' if status else '')+' ORDER BY source_path'
-        return [dict(row) for row in self.conn.execute(sql,(status,) if status else ())]
+        args = (status,) if status else ()
+        if limit is not None:
+            sql, args = sql+' LIMIT ?', args+(limit,)
+        return [dict(row) for row in self.conn.execute(sql,args)]
 
     def _write(self,record):
         names = list(record)

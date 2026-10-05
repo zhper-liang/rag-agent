@@ -282,6 +282,10 @@ eval:
       citation_support_drop_pp: 3
       unanswerable_drop_pp: 5
 
+# ───────── 接口（总揽.md §4.3）─────────
+api:
+  docs_list_limit: 200                # GET /api/docs 单次最多返回的文档数，超出时 truncated=true
+
 # ───────── 监控（评估与监控.md）─────────
 monitor:
   langfuse:

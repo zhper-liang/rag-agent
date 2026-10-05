@@ -16,6 +16,7 @@ class RAGState(TypedDict):
     clarify_question: str | None   # intent=clarify 时返回给用户
     filters: dict | None           # 硬过滤：接口参数传入，始终生效
     soft_filters: dict | None      # 软过滤：从问题里识别，只在首次检索生效
+    use_scope: bool                # 接口参数：本轮是否从问题里识别范围（软过滤），前端“取消限定”传 false
     use_soft: bool                 # 当前检索是否带软过滤
     scope_note: str | None         # 展示给用户的生效范围
     candidates: list[dict]         # 合并后送进重排的前 30 个

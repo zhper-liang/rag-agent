@@ -169,12 +169,21 @@ export function renderAnswer(answer, final = null, prefix = 'm') {
   return part(0, text.length);
 }
 
+// 原文两种打开方式：新标签页纯文本查看、下载 .md。调用方保证 docId 已过 DOC_ID 校验。
+function docLinks(docId) {
+  return `<a class="doc-link" href="/api/docs/${docId}/file?inline=true" target="_blank" rel="noopener">查看原文</a>`
+    + ` <a class="doc-link" href="/api/docs/${docId}/file" download>下载</a>`;
+}
+
+export function isDocId(value) {
+  return DOC_ID.test(String(value ?? ''));
+}
+
 export function renderSources(sources, prefix = 'm') {
   return (sources ?? []).map((s) => {
     const n = Number(s.cite);
     const meta = [s.section, s.pages ? `第 ${s.pages} 页` : ''].filter(Boolean).map(escapeHtml).join(' · ');
-    const link = DOC_ID.test(String(s.doc_id ?? ''))
-      ? ` <a class="doc-link" href="/api/docs/${s.doc_id}/file" download>下载原文</a>` : '';
+    const link = DOC_ID.test(String(s.doc_id ?? '')) ? ` ${docLinks(s.doc_id)}` : '';
     const images = (s.images ?? []).filter((img) => IMAGE_URL.test(String(img.url ?? ''))).map((img) => {
       const alt = escapeHtml(img.caption || `来源 ${n} 的图片`);
       return `<a href="${escapeHtml(img.url)}" target="_blank" rel="noopener"><img src="${escapeHtml(img.url)}" alt="${alt}" loading="lazy"></a>`;
@@ -182,6 +191,23 @@ export function renderSources(sources, prefix = 'm') {
     return `<li id="${prefix}-src-${n}"><span class="src-n">[${n}]</span> <span class="src-title">${escapeHtml(s.title ?? '')}</span>`
       + `${meta ? `<span class="src-meta">${meta}</span>` : ''}${link}${images ? `<div class="src-images">${images}</div>` : ''}</li>`;
   }).join('');
+}
+
+// meta.attachments：本轮上下文带出的图片，非法 URL 直接丢弃。
+export function renderAttachments(attachments) {
+  return (attachments ?? []).filter((img) => IMAGE_URL.test(String(img.url ?? ''))).map((img) => {
+    const url = escapeHtml(img.url);
+    const caption = img.caption ? `<figcaption>${escapeHtml(img.caption)}</figcaption>` : '';
+    return `<figure><a href="${url}" target="_blank" rel="noopener"><img src="${url}" alt="${escapeHtml(img.caption || '相关图片')}" loading="lazy"></a>${caption}</figure>`;
+  }).join('');
+}
+
+// 硬过滤的可读说明（纯文本，调用方用 textContent 写入）：文件类型 + 文档标题。
+export function scopeLabel(filters, titles = {}) {
+  const parts = [];
+  if (filters?.file_types?.length) parts.push(filters.file_types.join('/') + ' 文件');
+  for (const id of filters?.doc_ids ?? []) parts.push(`《${titles[id] ?? id}》`);
+  return parts.length ? '检索范围：' + parts.join('、') : '';
 }
 
 // SSE 帧切分：返回完整帧解析出的事件和剩余缓冲；只认 data 行（sse.py 每帧一行 JSON）。

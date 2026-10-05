@@ -218,5 +218,5 @@ def test_context_block_images_default():
 
 
 def test_rag_state_fields():
-    assert len(RAGState.__annotations__) == 21
+    assert len(RAGState.__annotations__) == 22
     assert not issubclass(RAGState, BaseModel)
