@@ -186,3 +186,19 @@ def test_cli_suppresses_transfer_request_urls(tmp_path, monkeypatch, caplog, cap
         pipeline.main()
     assert 'signature' not in caplog.text
     assert json.loads(capsys.readouterr().out) == {'cleaned': 0}
+
+
+def test_ingest_lock_exclusive_fails_fast_and_releases(tmp_path):
+    import subprocess, sys
+    from ragagent.ingest.registry_db import IngestLocked, ingest_lock
+    lock = tmp_path / 'sub' / 'ingest.lock'
+    probe = [sys.executable, '-c', 'import sys;from ragagent.ingest.registry_db import ingest_lock\n'
+             'with ingest_lock(sys.argv[1]): pass', str(lock)]
+    with ingest_lock(lock):
+        # 同进程再拿、另一个进程（真实的第二条命令）都立即失败。
+        with pytest.raises(IngestLocked):
+            with ingest_lock(lock):
+                pass
+        other = subprocess.run(probe, capture_output=True, text=True, timeout=30)
+        assert other.returncode != 0 and 'IngestLocked' in other.stderr
+    assert subprocess.run(probe, capture_output=True, timeout=30).returncode == 0

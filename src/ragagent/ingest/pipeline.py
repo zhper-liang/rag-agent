@@ -20,7 +20,7 @@ from ragagent.ingest.images import copy_image, process_images, prune_images
 from ragagent.ingest.models import Block, CleanDocument
 from ragagent.ingest.parsers.markdown import parse_markdown
 from ragagent.ingest.parsers.text import parse_text
-from ragagent.ingest.registry_db import RegistryDB, make_doc_id
+from ragagent.ingest.registry_db import IngestLocked, RegistryDB, ingest_lock, make_doc_id
 from ragagent.ingest.router import route
 
 log = logging.getLogger(__name__)
@@ -351,8 +351,13 @@ def main():
     # httpx/httpcore会在请求日志中记录presigned URL；CLI只保留警告和错误。
     for name in ('httpx', 'httpcore'):
         logging.getLogger(name).setLevel(logging.WARNING)
-    print(json.dumps(run_clean(args.input_dir, cfg=load_config(args.config), limit=args.limit,
-                              local_only=args.local_only), ensure_ascii=False))
+    cfg = load_config(args.config)
+    try:
+        with ingest_lock(cfg.paths.ingest_lock):
+            report = run_clean(args.input_dir, cfg=cfg, limit=args.limit, local_only=args.local_only)
+    except IngestLocked as exc:
+        raise SystemExit(str(exc)) from None
+    print(json.dumps(report, ensure_ascii=False))
 
 
 if __name__ == '__main__':

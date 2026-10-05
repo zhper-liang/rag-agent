@@ -36,6 +36,7 @@ class Paths(_Model):
     registry_db: str
     session_db: str
     feedback_db: str
+    ingest_lock: str
     keep_versions: PositiveInt
 
 
