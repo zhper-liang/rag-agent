@@ -31,6 +31,13 @@ def test_heading_snapshot():
     snap('headings', cleaners.fix_headings(blocks, cfg=cfg))
 
 
+def test_heading_emphasis_stripped():
+    out = cleaners.fix_headings([b('heading', '**L1 Synthetic Word 1**', level=1), b('heading', '__**1.1 设计**__', level=1),
+                                 b('heading', '**加粗** 与普通', level=1), b('heading', '**甲** 和 **乙**', level=1), b('paragraph', '**正文加粗**')])
+    assert [x.text for x in out] == ['L1 Synthetic Word 1', '1.1 设计', '**加粗** 与普通', '**甲** 和 **乙**', '**正文加粗**']
+    assert out[1].level == 2
+
+
 def test_repeated_headers_snapshot():
     blocks = [b(text='公司保密', page=i) for i in range(1, 4)]+[b(text=f'正文不同{i}', page=i) for i in range(1, 4)]
     snap('repeat', cleaners.remove_repeated(blocks))

@@ -37,7 +37,11 @@ def fix_headings(blocks: list[Block], *, cfg=None) -> list[Block]:
     for block in blocks:
         b = block.model_copy(deep=True)
         if b.type == 'heading':
+            # MinerU 对 Word 加粗标题会带上整段包裹的 Markdown 强调标记。
             value = b.text.strip()
+            while (match := re.fullmatch(r'(\*\*|__|\*|_)(.+)\1', value)) and match[1] not in match[2]:
+                value = match[2].strip()
+            b.text = value
             if len(value) > cfg.heading_demote_chars and value.endswith(('。', '.')):
                 b.type, b.level = 'paragraph', 0
             else:
