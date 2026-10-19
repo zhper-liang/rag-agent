@@ -6,6 +6,7 @@
 
 paths:
   raw: data/raw
+  uploads: data/uploads               # 网页上传的扫描根，和 raw 平级，单独登记，CLI 全量扫描 raw 不会碰到（服务化部署.md §11）
   parsed: data/parsed
   clean: data/clean
   chunks: data/chunks
@@ -288,6 +289,14 @@ api:
   docs_list_limit: 200                # GET /api/docs 单次最多返回的文档数，超出时 truncated=true
   request_timeout_s: 120              # /api/chat 整请求上限：超时发 error 事件并结束流，不再等图跑完
   health_timeout_s: 2                 # /api/health/ready 每个分项（Milvus、编码服务、登记表）的探测超时；不探测 LLM
+  time_filter_max_docs: 1000          # 时间范围解析出的文档数上限，超过拒绝并提示缩小范围（检索与重排.md §4.2）
+  upload:                             # POST /api/uploads（服务化部署.md §11）
+    max_file_mb: 50
+    max_files: 10                     # 单次请求最多几个文件
+    max_name_chars: 120               # 清洗后文件主名长度上限，超出截断，保留后缀
+    client_header: X-RAG-Client       # 必须带的自定义请求头；外站表单发不出，配合 Origin / Host 校验
+    jobs_keep: 200                    # 任务记录保留条数，超出删最旧的已结束任务
+    lock_retry_s: 10                  # 入库锁被 CLI 占用时，排队任务隔多久重试一次
 
 # ───────── 监控（评估与监控.md）─────────
 monitor:

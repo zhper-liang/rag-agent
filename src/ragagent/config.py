@@ -31,6 +31,7 @@ class _Model(BaseModel):
 
 class Paths(_Model):
     raw: str
+    uploads: str
     parsed: str
     clean: str
     chunks: str
@@ -397,10 +398,21 @@ class Alert(_Model):
     min_count: int | None = None
 
 
+class Upload(_Model):
+    max_file_mb: PositiveInt
+    max_files: int = Field(ge=1, le=100)
+    max_name_chars: int = Field(ge=8, le=200)
+    client_header: str = Field(pattern=r"^X-[A-Za-z0-9-]{1,64}$")
+    jobs_keep: PositiveInt
+    lock_retry_s: float = Field(gt=0)
+
+
 class Api(_Model):
     docs_list_limit: int = Field(ge=1, le=500)
     request_timeout_s: float = Field(gt=0)
     health_timeout_s: float = Field(gt=0)
+    time_filter_max_docs: PositiveInt
+    upload: Upload
 
 
 class MonitorStack(_Model):
