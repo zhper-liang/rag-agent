@@ -22,6 +22,7 @@ dependencies = [
     "pydantic==2.13.5",
     "pymilvus==2.5.18",
     "pymupdf==1.28.2",
+    "python-multipart==0.0.32",
     "pyyaml==6.0.3",
     "ragas==0.4.3",
     "rapidfuzz==3.14.6",

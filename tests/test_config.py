@@ -110,3 +110,12 @@ def test_monitoring_stack_safety(tmp_path, updates):
     p = write(tmp_path, lambda d: d['monitor']['stack'].update(updates))
     with pytest.raises(ConfigError):
         load_config(p, env=KEYS)
+
+
+@pytest.mark.parametrize('raw,uploads', [('data/shared', 'data/shared'), ('data', 'data/uploads'),
+                                       ('data/uploads/raw', 'data/uploads')])
+def test_upload_root_must_not_overlap_raw(tmp_path, raw, uploads):
+    def mutate(data):
+        data['paths'].update(raw=raw, uploads=uploads)
+    with pytest.raises(ConfigError, match='互不包含'):
+        load_config(write(tmp_path, mutate), env=KEYS)

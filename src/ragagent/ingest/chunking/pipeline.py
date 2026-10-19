@@ -105,8 +105,8 @@ def main():
     try:
         with ingest_lock(cfg.paths.ingest_lock):
             doc = CleanDocument.model_validate_json(args.input.read_text())
-            chunks = run_chunk(doc, cfg=cfg)
-            output = args.output or Path(f'data/chunks/{doc.doc_id}/v{doc.version}.jsonl')
+            chunks = run_chunk(doc, cfg=cfg.chunking)
+            output = args.output or Path(cfg.paths.chunks) / doc.doc_id / f'v{doc.version}.jsonl'
             output.parent.mkdir(parents=True,exist_ok=True)
             output.write_text(''.join(c.model_dump_json()+'\n' for c in chunks))
             print(json.dumps(statistics(chunks,cfg.chunking),ensure_ascii=False))

@@ -12,13 +12,17 @@ from ragagent.index.milvus import connect, ensure_collection, load, wait_indexed
 from ragagent.index.writer import delete_document, flush, index_document
 from ragagent.ingest.chunking.models import Chunk
 from ragagent.ingest.models import CleanDocument
-from ragagent.ingest.registry_db import RegistryDB
+from ragagent.ingest.registry_db import ID, RegistryDB
 
 
 def run_index(chunk_dir: str | Path | None = None, *, cfg: Config | None = None,
               client=None, emb=None, registry: RegistryDB | None = None,
-              collection: str | None = None, wait: bool = True, force: bool = False) -> dict:
+              collection: str | None = None, wait: bool = True, force: bool = False,
+              doc_ids: set[str] | None = None) -> dict:
     cfg = cfg or load_config()
+    if doc_ids is not None and (not isinstance(doc_ids, set) or not all(
+            isinstance(i, str) and ID.fullmatch(i) for i in doc_ids)):
+        raise ValueError("非法索引任务 doc_id")
     chunk_dir = Path(chunk_dir or cfg.paths.chunks)
     coll = collection or cfg.services.milvus.collection
     own_client, own_emb, own_registry = client is None, emb is None, registry is None
@@ -38,6 +42,8 @@ def run_index(chunk_dir: str | Path | None = None, *, cfg: Config | None = None,
         version = emb.version  # 模型服务不可达时不改任何文档状态
         for record in registry.list_documents():
             doc_id, v = record['doc_id'], record['version']
+            if doc_ids is not None and doc_id not in doc_ids:
+                continue
             if record['status'] in ('deleted', 'empty', 'duplicate', 'unsupported'):
                 # 清洗的终态不可检索；不能留下此前成功版本的幽灵向量。
                 delete_document(client, coll, doc_id)
@@ -55,6 +61,8 @@ def run_index(chunk_dir: str | Path | None = None, *, cfg: Config | None = None,
             if not force and not created and previous and previous['version'] == v and previous['embed_model'] == version:
                 report['skipped'] += 1
                 continue
+            active_version = registry.conn.execute('SELECT MAX(version) FROM index_manifest WHERE doc_id=?',
+                                                   (doc_id,)).fetchone()[0]
             try:
                 clean_path = Path(cfg.paths.clean) / doc_id / f'v{v}' / 'clean.json'
                 doc = CleanDocument.model_validate_json(clean_path.read_text(encoding='utf-8'))
@@ -72,6 +80,14 @@ def run_index(chunk_dir: str | Path | None = None, *, cfg: Config | None = None,
                     chunk_count=excluded.chunk_count,embed_model=excluded.embed_model,
                     updated_at=excluded.updated_at''',
                     (doc_id, coll, v, n, version, datetime.now(timezone.utc).isoformat()))
+                # 同版本 force/模型重写保持原时间；只有版本前进才刷新。
+                if active_version is not None and active_version != v:
+                    registry.conn.execute('''INSERT INTO doc_times VALUES (?,?)
+                        ON CONFLICT(doc_id) DO UPDATE SET indexed_at=excluded.indexed_at''',
+                        (doc_id, datetime.now(timezone.utc).isoformat()))
+                else:
+                    registry.conn.execute('INSERT OR IGNORE INTO doc_times VALUES (?,?)',
+                        (doc_id, datetime.now(timezone.utc).isoformat()))
                 registry.set_status(doc_id, 'indexed', error=None)
                 report['documents'] += 1
                 report['chunks'] += n

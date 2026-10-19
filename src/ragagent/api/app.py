@@ -23,6 +23,9 @@ from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictStr, field_validator
 
 from ragagent.api.health import create_health_router
+from ragagent.api.uploads import create_upload_router
+from ragagent.api.time_filters import resolve_time_docs
+from ragagent.ingest.upload import UploadManager
 from ragagent.api.sse import encode_event, graph_events
 from ragagent.api.images import public_event, safe_filename
 from ragagent.config import load_config
@@ -64,6 +67,8 @@ class ChatRequest(BaseModel):
     question: StrictStr = Field(min_length=1)
     session_id: StrictStr | None = None
     filters: dict | None = None
+    time_from: StrictStr | None = None
+    time_to: StrictStr | None = None
     use_scope: StrictBool = True    # false：不从问题里识别范围（前端“取消限定”重问）
 
     @field_validator('filters')
@@ -122,7 +127,9 @@ def create_app(cfg=None, *, deps=None, graph=None, graph_factory=build_graph, me
         owned_milvus, owned_trace = None, None
         binding = metrics_scope(metrics)
         binding.__enter__()
+        uploads = UploadManager(cfg)
         try:
+            app.state.uploads = uploads
             base = deps
             if base is None:
                 from pymilvus import MilvusClient
@@ -131,6 +138,8 @@ def create_app(cfg=None, *, deps=None, graph=None, graph_factory=build_graph, me
                 owned_milvus = MilvusClient(uri=settings.uri, user=os.getenv(settings.user_env, ''),
                                             password=os.getenv(settings.password_env, ''))
                 base = Deps(cfg=cfg, count=get_counter(cfg.chunking.tokenizer), milvus=owned_milvus)
+            uploads.milvus = base.milvus  # pymilvus 按 URI 复用连接，入库不得 close 在线客户端。
+            await uploads.start()
             app.state.deps = replace(base, prompt_sampler=sampler)
             app.state.trace_client = trace_client if trace_client is not None else build_trace_client(cfg)
             owned_trace = app.state.trace_client if trace_client is None else None
@@ -144,6 +153,7 @@ def create_app(cfg=None, *, deps=None, graph=None, graph_factory=build_graph, me
                 yield
         finally:
             try:
+                await uploads.stop()
                 sampler.close()
                 await close_clients()
                 if owned_milvus is not None:
@@ -164,6 +174,7 @@ def create_app(cfg=None, *, deps=None, graph=None, graph_factory=build_graph, me
         snapshot = await app.state.graph.aget_state({'configurable': {'thread_id': sid}})
         return snapshot.values.get('messages', [])
 
+    app.include_router(create_upload_router(cfg))
     app.include_router(create_health_router(cfg))
     app.include_router(metrics.router(cfg.monitor.metrics.path))
     app.include_router(create_feedback_router(cfg, history_lookup, session_resolver=session_id,
@@ -178,6 +189,10 @@ def create_app(cfg=None, *, deps=None, graph=None, graph_factory=build_graph, me
         # 长度规范化交由L2 rules；API只避免无限body进入图。
         if len(data.question) > cfg.preprocess.max_question_chars:
             raise HTTPException(422, '问题超过长度上限')
+        try:
+            time_doc_ids = await asyncio.to_thread(resolve_time_docs, cfg, data.time_from, data.time_to, data.filters)
+        except (OSError, sqlite3.Error):
+            raise HTTPException(503, '文档登记表暂时不可用') from None
         mid = uuid4().hex
 
         async def stream():
@@ -202,7 +217,7 @@ def create_app(cfg=None, *, deps=None, graph=None, graph_factory=build_graph, me
                     base = app.state.deps
                     if base.registry is None and Path(cfg.paths.registry_db).is_file():
                         registry = RegistryDB(cfg.paths.registry_db, readonly=True)
-                    ctx = replace(base, registry=registry or base.registry)
+                    ctx = replace(base, registry=registry or base.registry, time_doc_ids=time_doc_ids)
                     run_config = trace_config(cfg, session_id=sid, message_id=mid, config_hash=config_hash,
                                               intent='rag', client=app.state.trace_client)
                     run_config['configurable'] = {'thread_id': sid}
@@ -233,12 +248,18 @@ def create_app(cfg=None, *, deps=None, graph=None, graph_factory=build_graph, me
         if not Path(cfg.paths.registry_db).is_file():
             return {'docs': [], 'truncated': False}
         try:
-            rows = await asyncio.to_thread(registry_read, cfg.paths.registry_db,
-                lambda db: (db.title_candidates(q, limit=limit + 1) if q and q.strip()
-                            else db.list_documents(status='indexed', limit=limit + 1)))
+            def read_docs(db):
+                rows = (db.title_candidates(q, limit=limit + 1) if q and q.strip()
+                        else db.list_documents(status='indexed', limit=limit + 1))
+                ids = [r['doc_id'] for r in rows[:limit]]
+                times = dict(db.conn.execute('SELECT doc_id,indexed_at FROM doc_times WHERE doc_id IN ('
+                    + ','.join('?' for _ in ids) + ')', ids)) if ids else {}
+                docs = [{**{k: r[k] for k in ('doc_id', 'title', 'file_type', 'pages', 'version')},
+                         'indexed_at': times.get(r['doc_id'])} for r in rows[:limit]]
+                return rows, docs
+            rows, docs = await asyncio.to_thread(registry_read, cfg.paths.registry_db, read_docs)
         except (OSError, sqlite3.Error):
             raise HTTPException(503, '文档登记表暂时不可用') from None
-        docs = [{k: r[k] for k in ('doc_id', 'title', 'file_type', 'pages', 'version')} for r in rows[:limit]]
         return {'docs': docs, 'truncated': len(rows) > limit}
 
     @app.get('/api/docs/{doc_id}/file')

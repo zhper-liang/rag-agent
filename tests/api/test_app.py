@@ -194,7 +194,8 @@ def test_doc_list_indexed_only_no_paths_search_and_truncation(tmp_path, embed_ur
     with api_client(cfg, deps(cfg, embed_url)) as client:
         full = client.get('/api/docs').json()
         assert full['truncated'] and len(full['docs']) == 2
-        assert set(full['docs'][0]) == {'doc_id', 'title', 'file_type', 'pages', 'version'}
+        assert set(full['docs'][0]) == {'doc_id', 'title', 'file_type', 'pages', 'version', 'indexed_at'}
+        assert full['docs'][0]['indexed_at'] is None
         assert 'secret' not in json.dumps(full) and 'source_path' not in json.dumps(full)
         hits = client.get('/api/docs', params={'q': '部署指南1'}).json()
         assert [d['title'] for d in hits['docs']] == ['部署指南1'] and not hits['truncated']

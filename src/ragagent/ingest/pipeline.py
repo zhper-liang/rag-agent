@@ -228,7 +228,8 @@ async def _cloud(jobs, cfg, db, resume, mineru):
     return results
 
 
-def run_clean(input_dir=None, *, cfg=None, registry=None, mineru=None, limit=None, local_only=False) -> dict:
+def run_clean(input_dir=None, *, cfg=None, registry=None, mineru=None, limit=None, local_only=False,
+              source_prefix="", source_names=None) -> dict:
     """完整扫描才标missing；失败重试不增版本，parsing+batch_id优先恢复。"""
     cfg = cfg or load_config()
     input_root = Path(input_dir if input_dir is not None else cfg.paths.raw).resolve()
@@ -236,6 +237,12 @@ def run_clean(input_dir=None, *, cfg=None, registry=None, mineru=None, limit=Non
         raise NotADirectoryError(input_root)
     if limit is not None and limit < 0:
         raise ValueError('limit必须>=0')
+    prefix = source_prefix.strip("/")
+    if prefix not in ("", "@uploads"):
+        raise ValueError("非法登记前缀")
+    def source_path(path):
+        relative = path.relative_to(input_root).as_posix()
+        return f"{prefix}/{relative}" if prefix else relative
     owned = registry is None
     db = registry or RegistryDB(cfg.paths.registry_db)
     stats = Counter(scanned=0, cleaned=0, skipped=0, duplicate=0, empty=0, unsupported=0, failed=0, pending=0, deleted=0)
@@ -249,14 +256,16 @@ def run_clean(input_dir=None, *, cfg=None, registry=None, mineru=None, limit=Non
                 key=lambda p: p.relative_to(input_root).as_posix())
         if local_only:
             paths = [p for p in paths if route(p, cfg=cfg.ingest.parse_routes) == 'text']
-        present = {p.relative_to(input_root).as_posix() for p in paths}
+        present = {source_path(p) for p in paths}
+        if source_names is not None:
+            paths = [p for p in paths if p.relative_to(input_root).as_posix() in source_names]
         if limit is not None:
             paths = paths[:limit]
         cloud = []
         resume = {}
         for path in paths:
             stats['scanned'] += 1
-            relative = path.relative_to(input_root).as_posix()
+            relative = source_path(path)
             doc_id = make_doc_id(relative)
             old_root = None
             try:
@@ -328,7 +337,7 @@ def run_clean(input_dir=None, *, cfg=None, registry=None, mineru=None, limit=Non
                         with db.transaction():
                             db.conn.execute('DELETE FROM ingest_parse_parts WHERE doc_id=? AND version=?', (job.doc_id, record['version']))
                     stats['failed'] += 1
-        if limit is None and not local_only:
+        if limit is None and not local_only and source_names is None:
             owned_ids = {r[0] for r in db.conn.execute('SELECT doc_id FROM ingest_sources WHERE input_root=?', (str(input_root),))}
             for record in db.list_documents():
                 if record['doc_id'] in owned_ids and record['source_path'] not in present and record['status'] != 'deleted':

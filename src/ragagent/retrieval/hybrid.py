@@ -80,7 +80,7 @@ async def hybrid_many(client, coll: str, queries: list[str], vectors: list[list[
 async def retrieve(queries: list[str], filters: dict | None, deps):
     """独立于图的检索入口 -> (list[Hit], RetrievalResult)。"""
     cfg = deps.cfg
-    expr = build_expr(filters)  # 必须早于任何服务调用，非法过滤不接触 Milvus。
+    expr = build_expr(filters, time_doc_ids=deps.time_doc_ids)  # 必须早于任何服务调用，非法过滤不接触 Milvus。
     if not queries:
         return [], RetrievalResult()
     timings = {}

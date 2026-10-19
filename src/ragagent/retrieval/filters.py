@@ -30,10 +30,15 @@ def validate_filters(filters: dict | None) -> dict[str, list[str]]:
     return out
 
 
-def build_expr(filters: dict | None) -> str:
+def build_expr(filters: dict | None, *, time_doc_ids: list[str] | None = None) -> str:
     valid = validate_filters(filters)
     parts = ["searchable == true"]
     for key, field in (("file_types", "file_type"), ("doc_ids", "doc_id")):
         if values := valid.get(key):
             parts.append(field + " in [" + ",".join(f'"{v}"' for v in values) + "]")
+    if time_doc_ids is not None:
+        if not isinstance(time_doc_ids, list) or not time_doc_ids or not all(
+                isinstance(i, str) and DOC_ID_RE.fullmatch(i) for i in time_doc_ids):
+            raise ValueError("非法内部时间范围 doc_id")
+        parts.append('doc_id in [' + ','.join(f'"{i}"' for i in sorted(set(time_doc_ids))) + ']')
     return " and ".join(parts)

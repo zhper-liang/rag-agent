@@ -41,6 +41,13 @@ class Paths(_Model):
     ingest_lock: str
     keep_versions: PositiveInt
 
+    @model_validator(mode="after")
+    def _separate_upload_root(self):
+        raw, uploads = Path(self.raw).resolve(), Path(self.uploads).resolve()
+        if raw.is_relative_to(uploads) or uploads.is_relative_to(raw):
+            raise ValueError("paths.uploads 与 paths.raw 必须互不包含")
+        return self
+
 
 class Milvus(_Model):
     uri: str

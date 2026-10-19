@@ -75,12 +75,33 @@ def init_db(conn):
         error TEXT,
         updated_at TEXT NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS doc_times (
+        doc_id TEXT PRIMARY KEY REFERENCES documents(doc_id) ON DELETE CASCADE,
+        indexed_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS upload_jobs (
+        job_id TEXT PRIMARY KEY, status TEXT NOT NULL,
+        created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS upload_files (
+        job_id TEXT NOT NULL REFERENCES upload_jobs(job_id) ON DELETE CASCADE,
+        seq INTEGER NOT NULL, name TEXT NOT NULL, doc_id TEXT NOT NULL,
+        content_hash TEXT NOT NULL, previous_version INTEGER,
+        result TEXT, reason TEXT, PRIMARY KEY(job_id, seq)
+    );
     CREATE INDEX IF NOT EXISTS documents_status ON documents(status);
     CREATE INDEX IF NOT EXISTS documents_content_hash ON documents(content_hash);
     CREATE VIRTUAL TABLE IF NOT EXISTS doc_titles USING fts5(
         doc_id UNINDEXED,title,filename,tokenize='trigram'
     );
     ''')
+    # 旧库迁移：只补缺失时间，不覆盖有效版本的既有时间。
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE name='index_manifest'").fetchone():
+        with conn:
+            conn.execute('''INSERT OR IGNORE INTO doc_times(doc_id,indexed_at)
+                SELECT d.doc_id, MAX(m.updated_at) FROM documents d
+                JOIN index_manifest m ON m.doc_id=d.doc_id AND m.version=d.version
+                WHERE d.status='indexed' GROUP BY d.doc_id''')
 
 
 class RegistryDB:
