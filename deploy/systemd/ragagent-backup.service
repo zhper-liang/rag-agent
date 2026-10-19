@@ -1,0 +1,8 @@
+[Unit]
+Description=ragagent SQLite online backup
+
+[Service]
+Type=oneshot
+WorkingDirectory=%h/code/ragagent
+UMask=0077
+ExecStart=%h/.local/bin/uv run --env-file .env python scripts/backup.py

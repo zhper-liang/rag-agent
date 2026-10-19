@@ -12,6 +12,7 @@ paths:
   registry_db: data/registry.db       # 文档登记表（含 FTS5 标题索引）
   session_db: data/sessions.db        # LangGraph checkpointer
   feedback_db: data/feedback.db       # 用户点赞点踩
+  ingest_lock: data/ingest.lock       # 清洗、写索引命令的 flock 独占锁，拿不到立即退出（服务化部署.md）
   keep_versions: 2                    # 每个文档保留最近几个版本
 
 services:
@@ -286,9 +287,25 @@ eval:
 api:
   docs_list_limit: 200                # GET /api/docs 单次最多返回的文档数，超出时 truncated=true
   request_timeout_s: 120              # /api/chat 整请求上限：超时发 error 事件并结束流，不再等图跑完
+  health_timeout_s: 2                 # /api/health/ready 每个分项（Milvus、编码服务、登记表）的探测超时；不探测 LLM
 
 # ───────── 监控（评估与监控.md）─────────
 monitor:
+  stack:                             # compose 端口仅发布到回环；生成 deploy/monitoring/generated
+    network_mode: bridge             # Docker Desktop 用 bridge；原生 Linux 可用 host 并改抓取地址为回环
+    prometheus_image: prom/prometheus:v3.5.0
+    grafana_image: grafana/grafana:12.1.1
+    prometheus_port: 9090
+    grafana_port: 3000
+    grafana_password_env: GRAFANA_ADMIN_PASSWORD
+    scrape_interval_s: 15
+    scrape_timeout_s: 5
+    retention_days: 15
+    api_target: host.docker.internal:8000
+    milvus_target: host.docker.internal:9091
+    gpu_target: host.docker.internal:9835
+    gpu_port: 9835
+    gpu_timeout_s: 3
   langfuse:
     enabled: true
     host: https://jp.cloud.langfuse.com # EU；US 区域为 https://us.cloud.langfuse.com
@@ -309,6 +326,16 @@ monitor:
     gpu_mem_ratio: {value: 0.9, for: 10m}
     downvote_ratio: {value: 0.3, window: 1h, min_count: 20}
 
-logging:
-  retain_days: 30                     # 原始问题等日志的保留天数
-  prompt_sample_rate: 0               # 完整 Prompt / 回答的抽样记录比例，调试时再打开
+logging:                              # 运行日志走 journald，保留期由 journald 管，这里不设
+  prompt_sample_rate: 0               # 完整 Prompt / 回答的抽样记录比例，调试时再打开；只写本地，不进 Langfuse
+  sample_path: data/logs/prompt_samples.jsonl
+  sample_max_mb: 50                   # 单个抽样文件上限，超过后轮转
+  sample_keep_files: 5                # 轮转后保留的历史文件数
+
+# ───────── 备份（服务化部署.md）─────────
+backup:                               # SQLite 在线备份；Milvus 不备份，从 paths.chunks 重建
+  dir: data/backups
+  keep: 7                             # 每个库保留最近几份
+  dbs: [registry_db, feedback_db, session_db]   # 取 paths 下的同名键
+
+# 监控栈参数统一在 monitor.stack；scripts/gen_monitoring.py 生成原生配置。

@@ -1,6 +1,7 @@
 """Prompt包与base64只在本节点驻留；失败不进入历史。"""
 from __future__ import annotations
 
+import asyncio
 import logging
 import time
 
@@ -57,4 +58,7 @@ async def generate_node(state: RAGState, runtime: Runtime[Deps]) -> dict:
                 metrics.stage_seconds.labels(stage='ttft').observe(meta['ttft_ms'] / 1000)
             if meta['images_dropped'] or pkg.meta.get('images_failed'):
                 metrics.degraded.labels(kind='image').inc()
-    return {'answer': result.text if meta['status'] != 'failed' else '', 'gen_meta': meta}
+    answer = result.text if meta['status'] != 'failed' else ''
+    if deps.prompt_sampler is not None:
+        await asyncio.to_thread(deps.prompt_sampler.record, pkg, answer, meta)
+    return {'answer': answer, 'gen_meta': meta}

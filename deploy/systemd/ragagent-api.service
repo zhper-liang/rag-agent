@@ -4,6 +4,8 @@ Description=ragagent QA API + demo page
 After=ragagent-embed.service
 Requires=ragagent-embed.service
 
+# After/Requires 不代表编码模型就绪。启动后用下列命令检查（配置超时见 api.health_timeout_s）：
+# uv run --env-file .env python scripts/check_health.py
 [Service]
 WorkingDirectory=%h/code/ragagent
 ExecStart=%h/.local/bin/uv run --env-file .env uvicorn ragagent.api.app:create_app --factory --host 127.0.0.1 --port 8000 --workers 1

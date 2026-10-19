@@ -35,7 +35,7 @@ def generate_rules(alerts) -> dict:
             "llm_fallback_ratio": f'sum(rate(rag_llm_calls_total{{outcome="fallback"}}[{window}])) / {calls} > {value}',
             "degraded_ratio": f'sum by (kind) (rate(rag_degraded_total[{window}])) / scalar({reqs}) > {value}',
             "milvus_rss_gb": f'process_resident_memory_bytes{{job="milvus"}} > {value * 1024 ** 3}',
-            "gpu_mem_ratio": f'DCGM_FI_DEV_FB_USED / clamp_min((DCGM_FI_DEV_FB_USED + DCGM_FI_DEV_FB_FREE), 1e-12) > {value}',
+            "gpu_mem_ratio": f'rag_gpu_memory_used_bytes / clamp_min(rag_gpu_memory_total_bytes, 1e-12) > {value}',
         }
         if key == "downvote_ratio":
             minimum = a.get("min_count")

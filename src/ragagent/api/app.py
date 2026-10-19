@@ -22,6 +22,7 @@ from fastapi.staticfiles import StaticFiles
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictStr, field_validator
 
+from ragagent.api.health import create_health_router
 from ragagent.api.sse import encode_event, graph_events
 from ragagent.api.images import public_event, safe_filename
 from ragagent.config import load_config
@@ -33,6 +34,7 @@ from ragagent.llm.observability import metrics_scope
 from ragagent.monitor.feedback import create_feedback_router
 from ragagent.monitor.langfuse import build_client as build_trace_client, report_score, trace_config, update_trace_intent
 from ragagent.monitor.metrics import MonitorMetrics
+from ragagent.monitor.samples import PromptSampler
 from ragagent.retrieval.filters import validate_filters
 
 DOC_ID = re.compile(r'[0-9a-f]{16}')
@@ -111,6 +113,7 @@ def create_app(cfg=None, *, deps=None, graph=None, graph_factory=build_graph, me
     cfg = cfg or (deps.cfg if deps is not None else load_config())
     metrics = metrics or MonitorMetrics(endpoints=cfg.llm.endpoints)
     sessions = SessionLocks()
+    sampler = PromptSampler(cfg)
     config_hash = hashlib.sha256(cfg.model_dump_json().encode()).hexdigest()
 
     @asynccontextmanager
@@ -127,7 +130,7 @@ def create_app(cfg=None, *, deps=None, graph=None, graph_factory=build_graph, me
                 owned_milvus = MilvusClient(uri=settings.uri, user=os.getenv(settings.user_env, ''),
                                             password=os.getenv(settings.password_env, ''))
                 base = Deps(cfg=cfg, count=get_counter(cfg.chunking.tokenizer), milvus=owned_milvus)
-            app.state.deps = base
+            app.state.deps = replace(base, prompt_sampler=sampler)
             app.state.trace_client = trace_client if trace_client is not None else build_trace_client(cfg)
             owned_trace = app.state.trace_client if trace_client is None else None
             if graph is None:
@@ -140,6 +143,7 @@ def create_app(cfg=None, *, deps=None, graph=None, graph_factory=build_graph, me
                 yield
         finally:
             try:
+                sampler.close()
                 await close_clients()
                 if owned_milvus is not None:
                     owned_milvus.close()
@@ -159,6 +163,7 @@ def create_app(cfg=None, *, deps=None, graph=None, graph_factory=build_graph, me
         snapshot = await app.state.graph.aget_state({'configurable': {'thread_id': sid}})
         return snapshot.values.get('messages', [])
 
+    app.include_router(create_health_router(cfg))
     app.include_router(metrics.router(cfg.monitor.metrics.path))
     app.include_router(create_feedback_router(cfg, history_lookup, session_resolver=session_id,
         score_reporter=lambda sid, mid, rating: report_score(app.state.trace_client, message_id=mid, rating=rating),

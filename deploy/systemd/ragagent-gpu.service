@@ -1,0 +1,11 @@
+[Unit]
+Description=ragagent local nvidia-smi metrics exporter
+
+[Service]
+WorkingDirectory=%h/code/ragagent
+ExecStart=%h/.local/bin/uv run --env-file .env python -m ragagent.monitor.gpu
+Restart=on-failure
+RestartSec=10
+
+[Install]
+WantedBy=default.target

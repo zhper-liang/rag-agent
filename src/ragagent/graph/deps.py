@@ -30,6 +30,7 @@ class Deps:
     registry: Any | None = None
     structured_call: Callable = structured_call
     prompt_env: Any = None
+    prompt_sampler: Any = None
     @property
     def metrics(self):
         """D-013 B：兼容节点读取；非dataclass字段，不接受构造/replace注入。"""

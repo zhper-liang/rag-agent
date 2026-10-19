@@ -107,9 +107,13 @@ def main():
     parser.add_argument('--no-wait', action='store_true', help='只flush，不等待索引或load')
     args = parser.parse_args()
     cfg = load_config()
-    with Embedder(args.embed_url, cfg=cfg) as emb:
-        report = run_index(args.chunk_dir, cfg=cfg, emb=emb, collection=args.collection,
-                           wait=not args.no_wait, force=args.force)
+    from ragagent.ingest.lock import IngestBusy, ingest_lock
+    try:
+        with ingest_lock(cfg.paths.ingest_lock), Embedder(args.embed_url, cfg=cfg) as emb:
+            report = run_index(args.chunk_dir, cfg=cfg, emb=emb, collection=args.collection,
+                               wait=not args.no_wait, force=args.force)
+    except IngestBusy as exc:
+        raise SystemExit(str(exc)) from None
     print(json.dumps(report, ensure_ascii=False, default=str))
     if report['errors']:
         raise SystemExit(1)

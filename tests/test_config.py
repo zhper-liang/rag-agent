@@ -71,6 +71,21 @@ def test_search_list_below_top_k_rejected(tmp_path):
         load_config(p, env=KEYS)
 
 
+def test_backup_dbs_must_name_paths(tmp_path):
+    p = write(tmp_path, lambda d: d["backup"].__setitem__("dbs", ["registry_db", "chunks"]))
+    with pytest.raises(ConfigError, match="dbs"):
+        load_config(p, env=KEYS)
+    p = write(tmp_path, lambda d: d["backup"].__setitem__("dbs", ["session_db", "session_db"]))
+    with pytest.raises(ConfigError, match="重复"):
+        load_config(p, env=KEYS)
+
+
+def test_retain_days_removed(tmp_path):
+    p = write(tmp_path, lambda d: d["logging"].__setitem__("retain_days", 30))
+    with pytest.raises(ConfigError, match="retain_days"):
+        load_config(p, env=KEYS)
+
+
 def test_duplicate_key_rejected(tmp_path):
     text = DEFAULT_PATH.read_text(encoding="utf-8") + "\ngrade:\n  pass_score: 0.9\n  max_retries: 2\n"
     with pytest.raises(ConfigError, match="重复"):
@@ -84,3 +99,14 @@ def test_main_exit_code(tmp_path, monkeypatch, capsys):
     assert main([str(p)]) == 1
     assert "配置校验失败" in capsys.readouterr().err
     assert main([]) == 0
+
+
+@pytest.mark.parametrize('updates', [
+    {'api_target':'0.0.0.0:8000'}, {'gpu_target':'example.com:9835'},
+    {'grafana_password_env':'PASSWORD:-injected'}, {'scrape_timeout_s':999},
+    {'gpu_timeout_s':999}, {'grafana_port':9090}, {'network_mode':'unsafe'},
+])
+def test_monitoring_stack_safety(tmp_path, updates):
+    p = write(tmp_path, lambda d: d['monitor']['stack'].update(updates))
+    with pytest.raises(ConfigError):
+        load_config(p, env=KEYS)

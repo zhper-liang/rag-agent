@@ -6,6 +6,7 @@
 from __future__ import annotations
 
 import os
+import re
 import sys
 from collections.abc import Mapping
 from pathlib import Path
@@ -36,6 +37,7 @@ class Paths(_Model):
     registry_db: str
     session_db: str
     feedback_db: str
+    ingest_lock: str
     keep_versions: PositiveInt
 
 
@@ -398,9 +400,44 @@ class Alert(_Model):
 class Api(_Model):
     docs_list_limit: int = Field(ge=1, le=500)
     request_timeout_s: float = Field(gt=0)
+    health_timeout_s: float = Field(gt=0)
+
+
+class MonitorStack(_Model):
+    network_mode: Literal["bridge", "host"]
+    prometheus_image: str
+    grafana_image: str
+    prometheus_port: int = Field(ge=1024, le=65535)
+    grafana_port: int = Field(ge=1024, le=65535)
+    grafana_password_env: str
+    scrape_interval_s: PositiveInt
+    scrape_timeout_s: PositiveInt
+    retention_days: PositiveInt
+    api_target: str
+    milvus_target: str
+    gpu_target: str
+    gpu_port: int = Field(ge=1024, le=65535)
+    gpu_timeout_s: float = Field(gt=0)
+
+    @model_validator(mode="after")
+    def _safe(self):
+        if not re.fullmatch(r"[A-Z_][A-Z0-9_]*", self.grafana_password_env):
+            raise ValueError("monitor.stack Grafana 密码必须指定环境变量名")
+        if self.scrape_timeout_s > self.scrape_interval_s:
+            raise ValueError("monitor.stack 抓取超时不能超过间隔")
+        if self.gpu_timeout_s >= self.scrape_timeout_s:
+            raise ValueError("monitor.stack GPU 超时必须小于抓取超时")
+        if len({self.prometheus_port, self.grafana_port, self.gpu_port}) != 3:
+            raise ValueError("monitor.stack 监听端口不能重复")
+        for target in (self.api_target, self.milvus_target, self.gpu_target):
+            parsed = urlparse('http://' + target)
+            if parsed.hostname not in LOCAL_HOSTS | {"host.docker.internal"} or not parsed.port or parsed.path or parsed.query or parsed.fragment or parsed.username or parsed.password:
+                raise ValueError("monitor.stack 抓取地址必须是回环或 host.docker.internal 的 host:port")
+        return self
 
 
 class Monitor(_Model):
+    stack: MonitorStack
     langfuse: Langfuse
     metrics: Metrics
     feedback: Feedback
@@ -408,8 +445,22 @@ class Monitor(_Model):
 
 
 class Logging(_Model):
-    retain_days: PositiveInt
     prompt_sample_rate: float = Field(ge=0, le=1)
+    sample_path: str
+    sample_max_mb: PositiveInt
+    sample_keep_files: PositiveInt
+
+
+class Backup(_Model):
+    dir: str
+    keep: PositiveInt
+    dbs: list[Literal["registry_db", "feedback_db", "session_db"]] = Field(min_length=1)
+
+    @model_validator(mode="after")
+    def _unique(self):
+        if len(set(self.dbs)) != len(self.dbs):
+            raise ValueError("backup.dbs 有重复项")
+        return self
 
 
 class Config(_Model):
@@ -432,6 +483,7 @@ class Config(_Model):
     api: Api
     monitor: Monitor
     logging: Logging
+    backup: Backup
 
 
 # ───────── 加载 ─────────

@@ -351,8 +351,14 @@ def main():
     # httpx/httpcore会在请求日志中记录presigned URL；CLI只保留警告和错误。
     for name in ('httpx', 'httpcore'):
         logging.getLogger(name).setLevel(logging.WARNING)
-    print(json.dumps(run_clean(args.input_dir, cfg=load_config(args.config), limit=args.limit,
-                              local_only=args.local_only), ensure_ascii=False))
+    from ragagent.ingest.lock import IngestBusy, ingest_lock
+    cfg = load_config(args.config)
+    try:
+        with ingest_lock(cfg.paths.ingest_lock):
+            report = run_clean(args.input_dir, cfg=cfg, limit=args.limit, local_only=args.local_only)
+    except IngestBusy as exc:
+        raise SystemExit(str(exc)) from None
+    print(json.dumps(report, ensure_ascii=False))
 
 
 if __name__ == '__main__':

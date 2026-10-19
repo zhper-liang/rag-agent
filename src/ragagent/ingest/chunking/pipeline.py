@@ -100,12 +100,18 @@ def main():
     parser.add_argument('input',type=Path)
     parser.add_argument('--output',type=Path)
     args = parser.parse_args()
-    doc = CleanDocument.model_validate_json(args.input.read_text())
-    chunks = run_chunk(doc)
-    output = args.output or Path(f'data/chunks/{doc.doc_id}/v{doc.version}.jsonl')
-    output.parent.mkdir(parents=True,exist_ok=True)
-    output.write_text(''.join(c.model_dump_json()+'\n' for c in chunks))
-    print(json.dumps(statistics(chunks,load_config().chunking),ensure_ascii=False))
+    from ragagent.ingest.lock import IngestBusy, ingest_lock
+    cfg = load_config()
+    try:
+        with ingest_lock(cfg.paths.ingest_lock):
+            doc = CleanDocument.model_validate_json(args.input.read_text())
+            chunks = run_chunk(doc, cfg=cfg)
+            output = args.output or Path(f'data/chunks/{doc.doc_id}/v{doc.version}.jsonl')
+            output.parent.mkdir(parents=True,exist_ok=True)
+            output.write_text(''.join(c.model_dump_json()+'\n' for c in chunks))
+            print(json.dumps(statistics(chunks,cfg.chunking),ensure_ascii=False))
+    except IngestBusy as exc:
+        raise SystemExit(str(exc)) from None
 
 
 if __name__ == '__main__':

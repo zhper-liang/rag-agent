@@ -31,3 +31,6 @@ claude-codex/.locks/
 
 # 真实语料（只读，不提交）
 真实内容按量读取/
+
+# 由 config.yaml 生成的监控栈配置
+deploy/monitoring/generated/

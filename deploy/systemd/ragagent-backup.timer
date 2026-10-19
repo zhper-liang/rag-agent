@@ -1,0 +1,10 @@
+[Unit]
+Description=ragagent daily SQLite backup
+
+[Timer]
+OnCalendar=daily
+Persistent=true
+Unit=ragagent-backup.service
+
+[Install]
+WantedBy=timers.target
