@@ -341,7 +341,7 @@ def test_rerank_degraded_budget_empty_context_real_graph_uses_rag_empty(tmp_path
         assert state['retrieval']['degraded'] and state['context_blocks'] == []
         assert wire[-1]['type'] == 'final' and wire[-1]['sources'] == []
         assert not state['gen_meta']['post']['checked_citations']
-        assert state['gen_meta']['post']['citation_support'] is None
+        assert state['gen_meta']['post']['citation_support'] == 0.0
         assert len(state['messages']) == 2
 
 

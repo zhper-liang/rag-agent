@@ -52,7 +52,9 @@ async def build_final(state, cfg, rerank_pairs, *, count=len, message_id=None):
     valid = sum(c['state'] in ('ok', 'unsupported', 'unverified') for c in citations)
     supported = sum(c['state'] == 'ok' for c in citations)
     checked = sum(c['state'] in ('ok', 'unsupported') for c in citations)
-    stats.update(citation_validity=valid / len(citations) if citations else None,
-                 citation_support=supported / checked if checked else None,
+    # 没有引用是“可测的失败”，不是“没测到”：记 0，基线才不会被缺测卡死。
+    # 只有校验降级（verify_degraded）才算没测成，保持 None。
+    stats.update(citation_validity=valid / len(citations) if citations else 0.,
+                 citation_support=supported / checked if checked else 0.,
                  checked_citations=checked)
     return event, make_plain(answer, sents, status, cfg.postprocess), stats
