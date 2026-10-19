@@ -397,6 +397,7 @@ class Alert(_Model):
 
 class Api(_Model):
     docs_list_limit: int = Field(ge=1, le=500)
+    request_timeout_s: float = Field(gt=0)
 
 
 class Monitor(_Model):

@@ -123,7 +123,7 @@ retrieval:
   weights: {dense: 0.5, sparse: 0.5}  # M4 校准：Recall@30 0.911（0.7 档 0.869）
   per_query_limit: 50
   candidates: 30                      # 送进重排的数量
-  timeout_ms: 1000
+  timeout_ms: 10000                   # 编码 HTTP + Milvus 检索/回表/扩展的单次超时；1s 在 GPU 争用时直接失败
 
 rerank:
   model: BAAI/bge-reranker-v2-m3
@@ -285,6 +285,7 @@ eval:
 # ───────── 接口（总揽.md §4.3）─────────
 api:
   docs_list_limit: 200                # GET /api/docs 单次最多返回的文档数，超出时 truncated=true
+  request_timeout_s: 120              # /api/chat 整请求上限：超时发 error 事件并结束流，不再等图跑完
 
 # ───────── 监控（评估与监控.md）─────────
 monitor:

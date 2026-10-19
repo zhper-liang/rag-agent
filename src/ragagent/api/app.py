@@ -201,11 +201,18 @@ def create_app(cfg=None, *, deps=None, graph=None, graph_factory=build_graph, me
                                               intent='rag', client=app.state.trace_client)
                     run_config['configurable'] = {'thread_id': sid}
                     run_config['recursion_limit'] = 64
-                    async for event in graph_events(app.state.graph, initial_state(data.question, data.filters, data.use_scope),
-                        run_config, ctx, request=request, on_update=update):
-                        if event['type'] == 'error':
-                            status = 'error'
-                        yield encode_event(public_event(event))
+                    try:
+                        async with asyncio.timeout(cfg.api.request_timeout_s):
+                            async for event in graph_events(app.state.graph,
+                                initial_state(data.question, data.filters, data.use_scope),
+                                run_config, ctx, request=request, on_update=update):
+                                if event['type'] == 'error':
+                                    status = 'error'
+                                yield encode_event(public_event(event))
+                    except TimeoutError:
+                        # 整请求超时：图任务已被取消，补一个 error 事件收尾，不让连接空挂着。
+                        status = 'error'
+                        yield encode_event({'type': 'error', 'message': '回答超时，请稍后再试'})
                 finally:
                     if registry is not None:
                         registry.close()

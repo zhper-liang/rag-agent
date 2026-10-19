@@ -104,6 +104,21 @@ def test_generation_both_endpoints_failed_error_no_final_or_history(tmp_path, ll
         assert saved.values['gen_meta']['status'] == 'failed'
 
 
+def test_chat_request_timeout_emits_error_and_closes(tmp_path, llm_url, embed_url):
+    cfg = config(tmp_path, llm_url)
+    cfg = cfg.model_copy(update={'api': cfg.api.model_copy(update={'request_timeout_s': .2})})
+    dep = deps(cfg, embed_url)
+
+    class HangingGraph:
+        async def astream(self, *args, **kwargs):
+            await asyncio.sleep(30)
+            yield 'custom', {}
+
+    with TestClient(create_app(cfg, deps=dep, graph=HangingGraph())) as client:
+        wire = events(client.post('/api/chat', json={'question': '问题'}, headers={'X-Session-ID': 'timeout'}))
+    assert wire == [{'type': 'error', 'message': '回答超时，请稍后再试'}]
+
+
 @pytest.mark.parametrize('body,headers,code', [
     ({'question': 'q'}, {}, 400),
     ({'question': 'q', 'session_id': ''}, {'X-Session-ID': 's'}, 400),
