@@ -1,5 +1,6 @@
 """预处理依赖 L3 structured_call 的主备逻辑，不另行重试（§5/10）。"""
 
+import asyncio
 import inspect
 import logging
 
@@ -47,7 +48,9 @@ async def preprocess_question(question, messages, prev_intent, deps, filters=Non
                 "soft_filters": None, "scope_note": None, "clarify_question": None,
                 "preprocess_degraded": True, "scope_doc_ids": []}
     intent = "rag" if parsed.intent == "clarify" and prev_intent == "clarify" else parsed.intent
-    soft, note, scope_ids = resolve_scope(parsed.scope, deps.registry, deps.cfg.preprocess.scope, filters, metrics=deps.metrics)
+    # 登记表是同步 SQLite，放到线程里查，不占住事件循环。
+    soft, note, scope_ids = await asyncio.to_thread(
+        resolve_scope, parsed.scope, deps.registry, deps.cfg.preprocess.scope, filters, metrics=deps.metrics)
     return {"intent": intent, "standalone_question": parsed.standalone_question,
             "queries": build_queries(parsed), "soft_filters": soft, "scope_note": note,
             "clarify_question": (parsed.clarify_question or "请补充您想了解的具体问题") if intent == "clarify" else None,

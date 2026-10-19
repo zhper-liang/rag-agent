@@ -1,4 +1,5 @@
 import asyncio
+import time
 from concurrent.futures import ThreadPoolExecutor
 from types import SimpleNamespace
 
@@ -96,6 +97,41 @@ def test_feedback_rate_limit_atomic_and_expires(tmp_path):
     assert results.count(429) == 5
     now[0] += 60
     assert save(0) == 200
+
+
+def test_feedback_save_does_not_block_the_event_loop(tmp_path):
+    """反馈写库是同步 SQLite，必须在别的线程里跑，否则整个 API 一起停。"""
+    config, metrics = cfg(tmp_path), MonitorMetrics()
+
+    def slow_save(*args):
+        time.sleep(.15)
+
+    async def lookup(sid):
+        return [{"content": "答案", "additional_kwargs": {"message_id": "m"}}]
+
+    router = create_feedback_router(config, lookup, metrics=metrics, store=SimpleNamespace(save=slow_save))
+    endpoint = next(route.endpoint for route in router.routes)
+    request = SimpleNamespace(headers={"X-Session-ID": "a"})
+
+    async def scenario():
+        ticks = 0
+
+        async def ticker():
+            nonlocal ticks
+            while True:
+                ticks += 1
+                await asyncio.sleep(.01)
+
+        task = asyncio.create_task(ticker())
+        try:
+            result = await endpoint(FeedbackInput(message_id="m", rating=1), request)
+        finally:
+            task.cancel()
+        return ticks, result
+
+    ticks, result = asyncio.run(scenario())
+    assert result == {"ok": True}
+    assert ticks >= 5  # 写库的 150ms 里事件循环照常转
 
 
 def test_alert_values_and_durations_come_only_from_config():

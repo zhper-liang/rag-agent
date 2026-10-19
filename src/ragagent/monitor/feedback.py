@@ -1,6 +1,7 @@
 """会话绑定的反馈路由与 SQLite 存储；reason 永不上传云端。"""
 from __future__ import annotations
 
+import asyncio
 import inspect
 import logging
 import sqlite3
@@ -99,7 +100,9 @@ def create_feedback_router(cfg, history_lookup, *, session_resolver=None, score_
         history = await _resolve(history_lookup(session_id))
         if not any(_message_id(m) == data.message_id for m in (history or [])):
             raise HTTPException(404, "message_id 不在该会话的历史里")
-        store.save(session_id, data, cfg.monitor.feedback.rate_limit_per_session_min)
+        # 反馈库是 rollback journal + BEGIN IMMEDIATE，写锁竞争会阻塞；放到线程里等。
+        await asyncio.to_thread(store.save, session_id, data,
+                                cfg.monitor.feedback.rate_limit_per_session_min)
         metrics.feedback.labels(rating=str(data.rating)).inc()
         if score_reporter:
             try:

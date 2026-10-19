@@ -41,11 +41,14 @@ def connect_db(path: str | Path = 'data/registry.db', *, readonly=False) -> sqli
     if readonly:
         if str(path) == ':memory:':
             raise ValueError('内存库不能只读重新连接')
-        conn = sqlite3.connect(Path(path).resolve().as_uri()+'?mode=ro',uri=True,timeout=30)
+        conn = sqlite3.connect(Path(path).resolve().as_uri()+'?mode=ro',uri=True,timeout=30,
+                               check_same_thread=False)
     else:
         if isinstance(path,Path):
             path.parent.mkdir(parents=True,exist_ok=True)
-        conn = sqlite3.connect(str(path),timeout=30)
+        # check_same_thread=False：API 把登记表查询放进线程池（asyncio.to_thread），
+        # 连接在线程内创建或由单个请求串行使用，不存在并发访问。
+        conn = sqlite3.connect(str(path),timeout=30,check_same_thread=False)
     conn.row_factory = sqlite3.Row
     conn.execute('PRAGMA foreign_keys=ON')
     conn.execute('PRAGMA busy_timeout=30000')

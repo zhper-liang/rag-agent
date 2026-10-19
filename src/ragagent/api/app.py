@@ -50,6 +50,12 @@ HIDDEN_STATUS = ('deleted', 'failed', 'unsupported')
 log = logging.getLogger(__name__)
 
 
+def registry_read(path, read):
+    """登记表只读查询：连接在线程内创建和使用，不占事件循环，也不跨线程共享。"""
+    with RegistryDB(path, readonly=True) as db:
+        return read(db)
+
+
 class ChatRequest(BaseModel):
     model_config = ConfigDict(extra='forbid')
     question: StrictStr = Field(min_length=1)
@@ -214,9 +220,9 @@ def create_app(cfg=None, *, deps=None, graph=None, graph_factory=build_graph, me
         if not Path(cfg.paths.registry_db).is_file():
             return {'docs': [], 'truncated': False}
         try:
-            with RegistryDB(cfg.paths.registry_db, readonly=True) as db:
-                rows = (db.title_candidates(q, limit=limit + 1) if q and q.strip()
-                        else db.list_documents(status='indexed', limit=limit + 1))
+            rows = await asyncio.to_thread(registry_read, cfg.paths.registry_db,
+                lambda db: (db.title_candidates(q, limit=limit + 1) if q and q.strip()
+                            else db.list_documents(status='indexed', limit=limit + 1)))
         except (OSError, sqlite3.Error):
             raise HTTPException(503, '文档登记表暂时不可用') from None
         docs = [{k: r[k] for k in ('doc_id', 'title', 'file_type', 'pages', 'version')} for r in rows[:limit]]
@@ -226,10 +232,10 @@ def create_app(cfg=None, *, deps=None, graph=None, graph_factory=build_graph, me
     async def document_file(doc_id: str, inline: bool = False):
         if not DOC_ID.fullmatch(doc_id):
             raise HTTPException(400, '非法 doc_id')
-        # 登记表只读/每请求连接，不让SQLite连接跨API worker线程。
+        # 登记表只读查询放到线程里，连接在线程内创建。
         try:
-            with RegistryDB(cfg.paths.registry_db, readonly=True) as db:
-                row = db.get_document(doc_id)
+            row = await asyncio.to_thread(registry_read, cfg.paths.registry_db,
+                                          lambda db: db.get_document(doc_id))
         except (OSError, sqlite3.OperationalError):
             raise HTTPException(404, '文档不存在') from None
         if row is None or row['status'] in HIDDEN_STATUS:
@@ -248,8 +254,8 @@ def create_app(cfg=None, *, deps=None, graph=None, graph_factory=build_graph, me
         if not DOC_ID.fullmatch(doc_id) or version < 1 or not safe_filename(filename):
             raise HTTPException(400, '非法图片标识')
         try:
-            with RegistryDB(cfg.paths.registry_db, readonly=True) as db:
-                row = db.get_document(doc_id)
+            row = await asyncio.to_thread(registry_read, cfg.paths.registry_db,
+                                          lambda db: db.get_document(doc_id))
         except (OSError, sqlite3.OperationalError):
             raise HTTPException(404, '图片不存在') from None
         if row is None or row['status'] in HIDDEN_STATUS or version > row['version']:
