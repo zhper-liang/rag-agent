@@ -17,7 +17,7 @@ from pathlib import Path
 from uuid import uuid4
 
 from fastapi import FastAPI, HTTPException, Query, Request
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from langgraph.checkpoint.sqlite.aio import AsyncSqliteSaver
 from pydantic import BaseModel, ConfigDict, Field, StrictBool, StrictStr, field_validator
@@ -39,8 +39,9 @@ from ragagent.retrieval.filters import validate_filters
 
 DOC_ID = re.compile(r'[0-9a-f]{16}')
 SESSION_ID = re.compile(r'[A-Za-z0-9_-]{1,128}')
+# web/ 的构建产物（D-020，不提交）；没构建时前端路径返回 503，API 照常工作。
 STATIC = Path(__file__).parent / 'static'
-# 演示页只加载同源脚本/样式/图片；回答里的原始HTML由render.js转义，CSP再兜一层。
+# 前端只加载同源脚本/样式/图片；回答里的原始HTML由渲染器转义，CSP再兜一层。
 DEMO_HEADERS = {
     'Content-Security-Policy': "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; "
                                "connect-src 'self'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'",
@@ -256,10 +257,12 @@ def create_app(cfg=None, *, deps=None, graph=None, graph_factory=build_graph, me
         target = (root / doc_id / f"v{row['version']}" / 'full.md').resolve()
         if not target.is_relative_to(root) or not target.is_file():
             raise HTTPException(404, '文档不存在')
+        # 前端抽屉用登记版本拼图片地址 /api/images/{doc_id}/v{version}/...
+        version = {'X-Doc-Version': str(row['version'])}
         if inline:
             return FileResponse(target, media_type='text/plain', filename=f'{doc_id}.md',
-                                content_disposition_type='inline', headers=INLINE_HEADERS)
-        return FileResponse(target, media_type='text/markdown', filename=f'{doc_id}.md')
+                                content_disposition_type='inline', headers={**INLINE_HEADERS, **version})
+        return FileResponse(target, media_type='text/markdown', filename=f'{doc_id}.md', headers=version)
 
     @app.get('/api/images/{doc_id}/v{version}/{filename}')
     async def image_file(doc_id: str, version: int, filename: str):
@@ -278,9 +281,33 @@ def create_app(cfg=None, *, deps=None, graph=None, graph_factory=build_graph, me
             raise HTTPException(404, '图片不存在')
         return FileResponse(target, headers={'X-Content-Type-Options': 'nosniff'})
 
-    @app.get('/', include_in_schema=False)
-    async def demo_page():
-        return FileResponse(STATIC / 'index.html', media_type='text/html', headers=DEMO_HEADERS)
+    static = STATIC
 
-    app.mount('/static', StaticFiles(directory=STATIC), name='static')
+    # / /c/{session_id} /d/{doc_id} 都返回 index.html，由前端 History API 路由（总揽 §4.3）。
+    async def spa_page():
+        index = static / 'index.html'
+        if not index.is_file():
+            return PlainTextResponse('前端未构建：在 web/ 下执行 npm ci && npm run build', status_code=503,
+                                     headers={'X-Content-Type-Options': 'nosniff'})
+        return FileResponse(index, media_type='text/html', headers={**DEMO_HEADERS, 'Cache-Control': 'no-cache'})
+
+    @app.get('/', include_in_schema=False)
+    async def home_page():
+        return await spa_page()
+
+    @app.get('/c/{session_id}', include_in_schema=False)
+    async def chat_page(session_id: str):
+        if not SESSION_ID.fullmatch(session_id):
+            raise HTTPException(404)
+        return await spa_page()
+
+    @app.get('/d/{doc_id}', include_in_schema=False)
+    async def doc_page(doc_id: str):
+        if not DOC_ID.fullmatch(doc_id):
+            raise HTTPException(404)
+        return await spa_page()
+
+    # 没构建时不挂载：/static/* 走普通 404；构建后重启 API 生效（服务化部署 §4.1）。
+    if static.is_dir():
+        app.mount('/static', StaticFiles(directory=static), name='static')
     return app

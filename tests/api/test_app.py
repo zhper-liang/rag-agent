@@ -159,6 +159,8 @@ def test_doc_download_registry_version_invalid_id_and_symlink(tmp_path, embed_ur
     with api_client(cfg, dep) as client:
         good = client.get('/api/docs/0123456789abcdef/file')
         assert good.status_code == 200 and good.text == '公开清洗原文'
+        # 前端抽屉按登记版本拼图片地址。
+        assert good.headers['x-doc-version'] == '1'
         for invalid in ['not-an-id', '0123456789ABCDEF', '0123456789abcdef%0A', '0123456789abcdef0', '0123456789abcdef%27']:
             assert client.get(f'/api/docs/{invalid}/file').status_code == 400
         assert client.get('/api/docs/ffffffffffffffff/file').status_code == 404

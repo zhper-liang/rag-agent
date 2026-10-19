@@ -34,3 +34,7 @@ claude-codex/.locks/
 
 # 由 config.yaml 生成的监控栈配置
 deploy/monitoring/generated/
+
+# 前端：依赖和构建产物（D-020，部署时 npm ci && npm run build）
+web/node_modules/
+src/ragagent/api/static/
