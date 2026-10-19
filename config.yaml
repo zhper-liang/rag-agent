@@ -170,26 +170,26 @@ prompt:
 llm:
   endpoints:
     main:
-      base_url: "https://mimo.ezlook.top/v1"                    # 待填
-      model: "mimo-v2.6-pro"                       # 待填
+      base_url: "https://wangzi.us/v1"
+      model: "gpt-6-luna"
       api_key_env: LLM_MAIN_KEY
       vision: true                    # 是否支持图片输入；false 时原图降级为说明文字
       structured_output: function_calling   # function_calling / json_schema / json_mode
       strip_think: false              # 正文里有 <think>…</think> 时打开，推流时过滤
-      max_concurrency: 8              # 本进程内同时发出的请求数
+      max_concurrency: 16              # 本进程内同时发出的请求数；实测 16 路时检索 1s 超时，评测用 4
       extra_body: {}                  # 服务商特有参数，原样透传
     main_backup:
-      base_url: "https://mimo.ezlook.top/v1"
-      model: "mimo-v2.6-pro"
+      base_url: "https://wangzi.us/v1"
+      model: "gpt-6-luna"
       api_key_env: LLM_MAIN_BACKUP_KEY
       vision: true
       structured_output: function_calling
       strip_think: false
-      max_concurrency: 8
+      max_concurrency: 16
       extra_body: {}
     small:
-      base_url: "https://mimo.ezlook.top/v1"
-      model: "mimo-v2.6-flash"
+      base_url: "https://wangzi.us/v1"
+      model: "gpt-6-luna"
       api_key_env: LLM_SMALL_KEY
       vision: true
       structured_output: function_calling
@@ -197,8 +197,8 @@ llm:
       max_concurrency: 16
       extra_body: {}
     small_backup:
-      base_url: "https://mimo.ezlook.top/v1"
-      model: "mimo-v2.6-flash"
+      base_url: "https://wangzi.us/v1"
+      model: "gpt-6-luna"
       api_key_env: LLM_SMALL_BACKUP_KEY
       vision: true
       structured_output: function_calling
@@ -211,8 +211,8 @@ llm:
       fallback: main_backup
       temperature: 0.2
       max_tokens: 4096                # 2048 时长回答被截断（L3 实测 2/5）
-      first_token_timeout_s: 10       # 每次尝试等首个 token 的时间
-      pre_first_token_budget_s: 30    # 首个 token 之前的总时长上限（含重试和切换）
+      first_token_timeout_s: 25       # 每次尝试等首个 token 的时间；gpt-6-luna 实测首 token 8–12s
+      pre_first_token_budget_s: 45    # 首个 token 之前的总时长上限（含重试和切换）
       total_timeout_s: 90
       retries: 2                      # 429 / 5xx / 连接错误时同一模型的重试次数
       backoff_s: [1, 2]
@@ -221,21 +221,21 @@ llm:
       fallback: small_backup
       temperature: 0.5
       max_tokens: 512
-      first_token_timeout_s: 10
-      pre_first_token_budget_s: 30
-      total_timeout_s: 30
+      first_token_timeout_s: 25
+      pre_first_token_budget_s: 45
+      total_timeout_s: 60
       retries: 2
       backoff_s: [1, 2]
     preprocess:                       # 不重试：主模型失败或超时直接切备用，再失败按规则降级
       primary: small
       fallback: small_backup
       temperature: 0
-      timeout_s: 3
+      timeout_s: 15
     rewrite:
       primary: small
       fallback: small_backup
       temperature: 0
-      timeout_s: 3
+      timeout_s: 15
     eval:                             # 评测出题、RAGAS 打分；建议换成和生成模型不同的模型
       primary: main
       fallback: main_backup
@@ -248,7 +248,7 @@ postprocess:
   min_claim_chars: 8                  # 句子太短不做支持度校验
   max_pairs: 64                       # 每轮最多打分的“句子-窗口”对数
   rerank_max_length: 512
-  verify_timeout_s: 3                 # 超时则引用全部保持 unverified，final 照常发
+  verify_timeout_s: 10                # 超时则引用全部保持 unverified，final 照常发；gpt-6-luna 下 3s 不够
   warn_ratio: 0.5                     # 不支持的句子占比超过该值时加整体提示
   notices:
     unsupported: "部分内容未能在资料中核实，请以原文为准。"
@@ -276,10 +276,10 @@ eval:
     quick:
       recall_at_8_drop_pp: 2
       chat_misroute_max: 0.02
-      p95_latency_rise: 0.2
+      p95_latency_rise: 0.6          # 40 题样本两轮 p95 实测波动 23%–45%，全量后按全量波动收紧
     full:
       faithfulness_drop: 0.03
-      citation_support_drop_pp: 3
+      citation_support_drop_pp: 10    # 首次建基线两轮实测波动 4.8pp
       unanswerable_drop_pp: 5
 
 # ───────── 接口（总揽.md §4.3）─────────

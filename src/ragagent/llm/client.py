@@ -22,11 +22,14 @@ def build_client(ep, scene) -> ChatOpenAI:
     cache = _CLIENTS.setdefault(loop, {})
     if key not in cache:
         timeout = getattr(scene, 'total_timeout_s', None) or scene.timeout_s
+        # httpx 默认连接池只有 100 条连接；不显式放宽，max_concurrency 超过 100 就名不副实。
+        limits = httpx.Limits(max_connections=ep.max_concurrency,
+                              max_keepalive_connections=ep.max_concurrency)
         # ChatOpenAI默认httpx池按base_url/timeout全局缓存，会跨loop重用已关闭连接。
         # 显式拥有两个HTTP客户端，保证本模块宣称的loop隔离与可重启。
         cache[key] = ChatOpenAI(
-            http_client=httpx.Client(timeout=timeout),
-            http_async_client=httpx.AsyncClient(timeout=timeout),
+            http_client=httpx.Client(timeout=timeout, limits=limits),
+            http_async_client=httpx.AsyncClient(timeout=timeout, limits=limits),
             base_url=ep.base_url,
             api_key=os.environ[ep.api_key_env],
             model=ep.model,
