@@ -1,7 +1,7 @@
 // 其余同源接口：文档列表、原文、反馈、就绪检查。
 import { errorText } from './sse';
 import { isDocId } from './render';
-import { uploadConfig, validateFiles } from './uploads';
+import { cleanFilename, uploadConfig, validateFiles } from './uploads';
 import type { Doc, UploadConflict, UploadFileResult, UploadJob } from './types';
 
 export async function listDocs(q: string, signal?: AbortSignal): Promise<{ docs: Doc[]; truncated: boolean }> {
@@ -60,7 +60,8 @@ export async function uploadFiles(files: File[], overwrite = false, signal?: Abo
   if (error) throw new UploadError(400, error);
   const body = new FormData();
   if (overwrite) body.append('overwrite', 'true');
-  files.forEach((file) => body.append('files', file, file.name));
+  // 先按同一规则清洗，避免浏览器把双引号/换行编码成 %22/%0A，导致服务端名称和冲突映射不一致。
+  files.forEach((file) => body.append('files', file, cleanFilename(file.name)));
   const res = await fetch('/api/uploads', {
     method: 'POST', headers: { [uploadConfig.clientHeader]: 'web' }, body, signal,
   });

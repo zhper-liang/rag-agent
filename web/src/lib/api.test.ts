@@ -19,6 +19,15 @@ describe('上传 API 契约', () => {
     expect(init.body.get('overwrite')).toBe('true');
     expect(init.body.getAll('files')).toHaveLength(1);
   });
+  it('传输清洗后的文件名，避免双引号被 multipart 编为 %22 后冲突无法匹配', async () => {
+    const fetch = mock({ job_id: 'quoted', files: [{ name: 'ab.md' }] }, 202);
+    const original = new File(['内容不变'], 'a"b.MD', { type: 'text/markdown' });
+    await uploadFiles([original]);
+    const sent = fetch.mock.calls[0][1].body.get('files') as File;
+    expect(sent.name).toBe('ab.md');
+    expect(await sent.text()).toBe('内容不变');
+    expect(original.name).toBe('a"b.MD');
+  });
   it.each([
     { conflicts: [{ name: '文档.md', title: '已有标题', version: 3 }] },
     { detail: { conflicts: [{ name: '文档.md', title: '已有标题', version: 3 }] } },
