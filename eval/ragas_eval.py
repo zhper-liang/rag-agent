@@ -9,6 +9,8 @@ import os
 import re
 from pathlib import Path
 
+import openai
+
 # RAGAS产品遥测也关闭；评测内容不得通过Langfuse上传。
 os.environ['RAGAS_DO_NOT_TRACK'] = 'true'
 
@@ -30,6 +32,14 @@ from ragagent.llm.structured import structured_call
 NAMES = ('faithfulness', 'answer_relevancy', 'context_precision', 'context_recall', 'answer_correctness')
 
 
+def _retryable(exc):
+    """瞬时错误才退避重试；参数/模型/鉴权类错误直接抛出。"""
+    if isinstance(exc, (openai.APIConnectionError, openai.RateLimitError, openai.InternalServerError)):
+        return True
+    status = getattr(exc, 'status_code', None)
+    return isinstance(status, int) and status >= 500
+
+
 class CallBudgetExceeded(RuntimeError):
     pass
 
@@ -47,7 +57,7 @@ class CallBudget:
 
 
 class EvalLLM(LangchainLLMWrapper):
-    """继续使用L3客户端/接入点并发限制；禁SDK与RAGAS的隐式重试。"""
+    """继续使用L3客户端/接入点并发限制；禁SDK与RAGAS隐式重试，本类对瞬时错误显式退避重试。"""
     def __init__(self, cfg, budget, run_config):
         self.cfg, self.budget = cfg, budget
         super().__init__(build_client(cfg.llm.endpoints[cfg.llm.scenes.eval.primary], cfg.llm.scenes.eval),
@@ -58,18 +68,29 @@ class EvalLLM(LangchainLLMWrapper):
             raise ValueError('generation count must be positive')
         # OpenAI-compatible 接入点可能仅支持 n=1；RAGAS 的 n 个样本必须独立真实采样。
         # 不复制一个回答冒充多样本；每次采样的主备调用均计入物理及预约预算。
+        # 连接错误/429/5xx 退避重试，避免上游瞬时抖动直接丢掉指标。
         scene = self.cfg.llm.scenes.eval
+
+        async def call_endpoint(name):
+            ep = self.cfg.llm.endpoints[name]
+            client = build_client(ep, scene)
+            for attempt in range(3):
+                self.budget.reserve()
+                try:
+                    async with endpoint_semaphore(ep):
+                        return await client.agenerate_prompt(
+                            [prompt], n=1, temperature=scene.temperature, stop=stop, callbacks=[])
+                except Exception as exc:
+                    if attempt == 2 or not _retryable(exc):
+                        raise
+                    await asyncio.sleep(2 * (2 ** attempt))
+            raise RuntimeError('unreachable')
+
         results = []
         for _ in range(n):
             for index, name in enumerate((scene.primary, scene.fallback)):
-                self.budget.reserve()
-                ep = self.cfg.llm.endpoints[name]
-                client = build_client(ep, scene)
                 try:
-                    async with endpoint_semaphore(ep):
-                        result = await client.agenerate_prompt([prompt], n=1, temperature=scene.temperature,
-                                                               stop=stop, callbacks=[])
-                    results.append(result)
+                    results.append(await call_endpoint(name))
                     break
                 except Exception:
                     if index:

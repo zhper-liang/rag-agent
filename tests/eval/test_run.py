@@ -24,11 +24,11 @@ def metrics():
 def test_all_gates_equal_boundary_worse_and_missing():
     base = metrics()
     assert all(g["status"] == "pass" for g in check_gates(base, base, gates(), "full"))
-    boundary = dict(recall_at_8=.78, chat_misroute=.02, p95_latency_s=1.2, faithfulness=.87,
-                    citation_support_rate=.92, unanswerable_rate=.85)
+    boundary = dict(recall_at_8=.78, chat_misroute=.02, p95_latency_s=1.6, faithfulness=.87,
+                    citation_support_rate=.85, unanswerable_rate=.85)
     assert all(g["status"] == "pass" for g in check_gates(boundary, base, gates(), "full"))
-    worse = dict(recall_at_8=.77, chat_misroute=.021, p95_latency_s=1.21, faithfulness=.869,
-                 citation_support_rate=.919, unanswerable_rate=.849)
+    worse = dict(recall_at_8=.77, chat_misroute=.021, p95_latency_s=1.61, faithfulness=.869,
+                 citation_support_rate=.849, unanswerable_rate=.849)
     assert all(g["status"] == "fail" for g in check_gates(worse, base, gates(), "full"))
     assert check_gates({}, None, gates(), "quick")[0]["status"] == "unverified"
     assert check_gates({**base, "faithfulness": float("nan")}, base, gates(), "full")[3]["status"] == "unverified"

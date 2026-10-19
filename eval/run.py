@@ -171,6 +171,12 @@ async def evaluate(dataset, chunks, backend, *, tier, cfg, collection, config_ha
                                            "citation_validity_rate", "citation_support_rate", "citation_coverage"]
                 if generation_failed:
                     row["score_error_type"] = "GenerationFailed"
+                elif row.get("answerable_rejected") == 1.0 or not result.get("context_blocks"):
+                    # 系统没答（检索/grade 判无支撑）是可测的失败，记 0 分而不是缺测，
+                    # 否则基线会被这类真实失败永久卡住。生成失败仍按 partial 处理，不掩盖故障。
+                    row.update({name: 0.0 for name in ("faithfulness", "answer_relevancy", "context_precision",
+                                                      "context_recall", "answer_correctness")})
+                    row["score_zeroed"] = "no_answer"
                 else:
                     try:
                         row.update(await score(case, result) if score else result.get("ragas", {}))
