@@ -1,7 +1,8 @@
 // 其余同源接口：文档列表、原文、反馈、就绪检查。
 import { errorText } from './sse';
 import { isDocId } from './render';
-import type { Doc } from './types';
+import { uploadConfig, validateFiles } from './uploads';
+import type { Doc, UploadConflict, UploadFileResult, UploadJob } from './types';
 
 export async function listDocs(q: string, signal?: AbortSignal): Promise<{ docs: Doc[]; truncated: boolean }> {
   const res = await fetch(`/api/docs${q.trim() ? `?q=${encodeURIComponent(q.trim())}` : ''}`, { signal });
@@ -38,4 +39,55 @@ export async function checkReady(): Promise<'ok' | 'not_ready' | 'unknown'> {
     // 网络错误
   }
   return 'unknown';
+}
+
+// 409 是可恢复的用户决策，不能像普通 HTTP 错误一样丢掉冲突详情。
+export class UploadError extends Error {
+  constructor(public status: number, message: string, public conflicts: UploadConflict[] = []) {
+    super(message); this.name = 'UploadError';
+  }
+}
+async function uploadError(res: Response): Promise<UploadError> {
+  const data = await res.json().catch(() => ({}));
+  const detail = data.detail ?? data;
+  const raw = Array.isArray(detail.conflicts) ? detail.conflicts : (Array.isArray(data.conflicts) ? data.conflicts : []);
+  const conflicts: UploadConflict[] = raw.map((c: { name?: string; filename?: string; title?: string; version: number }) => ({ filename: c.name ?? c.filename ?? '', title: c.title ?? '', version: c.version }));
+  const fallback = res.status === 403 ? '上传被拒绝，请从 localhost 或 127.0.0.1 同源页面访问' : res.status === 400 ? '文件不符合上传要求' : `HTTP ${res.status}`;
+  return new UploadError(res.status, typeof detail === 'string' ? detail : (detail.message ?? fallback), conflicts);
+}
+export async function uploadFiles(files: File[], overwrite = false, signal?: AbortSignal): Promise<UploadJob> {
+  const error = validateFiles(files);
+  if (error) throw new UploadError(400, error);
+  const body = new FormData();
+  if (overwrite) body.append('overwrite', 'true');
+  files.forEach((file) => body.append('files', file, file.name));
+  const res = await fetch('/api/uploads', {
+    method: 'POST', headers: { [uploadConfig.clientHeader]: 'web' }, body, signal,
+  });
+  if (res.status !== 202) throw await uploadError(res);
+  const job = await res.json();
+  return normalizeJob({ status: 'queued', ...job });
+}
+export async function getJob(jobId: string, signal?: AbortSignal): Promise<UploadJob> {
+  const res = await fetch(`/api/uploads/${encodeURIComponent(jobId)}`, { signal, headers: { [uploadConfig.clientHeader]: 'web' } });
+  if (!res.ok) throw await uploadError(res);
+  return normalizeJob(await res.json());
+}
+export async function listJobs(signal?: AbortSignal): Promise<UploadJob[]> {
+  const res = await fetch('/api/uploads', { signal, headers: { [uploadConfig.clientHeader]: 'web' } });
+  if (!res.ok) throw await uploadError(res);
+  const data = await res.json();
+  return (Array.isArray(data) ? data : (data.jobs ?? [])).map(normalizeJob);
+}
+export async function retryJob(jobId: string): Promise<UploadJob> {
+  const res = await fetch(`/api/uploads/${encodeURIComponent(jobId)}/retry`, {
+    method: 'POST', headers: { [uploadConfig.clientHeader]: 'web' },
+  });
+  if (res.status !== 202) throw await uploadError(res);
+  return normalizeJob({ status: 'queued', ...await res.json() });
+}
+
+// 服务端持久化结构为 name/result；UI 中统一为 filename/status，空 result 是待处理而非失败。
+function normalizeJob(job: Omit<UploadJob, 'files'> & { files?: (Partial<UploadFileResult> & { name?: string; result?: string | null })[] }): UploadJob {
+  return { ...job, files: job.files?.map((f) => ({ ...f, filename: f.name ?? f.filename ?? '', status: f.result ?? f.status ?? '待处理' })) };
 }

@@ -10,6 +10,7 @@ import { Composer, scopeFilters, type Scope } from './components/Composer';
 import { DocDrawer } from './components/DocDrawer';
 import { IconLogo, IconPlus, IconSidebar } from './components/icons';
 import { Sidebar } from './components/Sidebar';
+import { ConflictDialog, UploadPanel, useUploads } from './components/Uploads';
 import { Turn, type LiveTurn } from './components/Turn';
 
 const narrowQuery = window.matchMedia('(max-width: 860px)');
@@ -89,6 +90,9 @@ export function App() {
     window.setTimeout(() => setToast(''), 1600);
   };
 
+  const [docsRevision, setDocsRevision] = useState(0);
+  const uploads = useUploads(() => setDocsRevision((n) => n + 1), flash);
+
   const copy = useCallback(async (text: string) => {
     try {
       await navigator.clipboard.writeText(text);
@@ -113,11 +117,11 @@ export function App() {
   const updateTurn = (key: string, fn: (t: LiveTurn) => LiveTurn) =>
     setTurns((ts) => ts.map((t) => (t.key === key ? fn(t) : t)));
 
-  const ask = useCallback(async (question: string, opts: { filters: TurnRecord['filters']; label: string; useScope: boolean }) => {
+  const ask = useCallback(async (question: string, opts: { filters: TurnRecord['filters']; label: string; useScope: boolean; time_from?: string; time_to?: string }) => {
     if (busyRef.current) return;
     const sid = sessionRef.current;
     const key = nextKey();
-    const rec: TurnRecord = { question, filters: opts.filters, label: opts.label, use_scope: opts.useScope, answer: '', meta: null, final: null, elapsed: null };
+    const rec: TurnRecord = { question, ...(opts.time_from ? { time_from: opts.time_from } : {}), ...(opts.time_to ? { time_to: opts.time_to } : {}), filters: opts.filters, label: opts.label, use_scope: opts.useScope, answer: '', meta: null, final: null, elapsed: null };
     setTurns((ts) => [...ts, { key, rec: { ...rec }, status: 'streaming', stage: null, error: null }]);
     if (routeRef.current.name === 'home') navigate({ name: 'chat', sessionId: sid });
     scrollDown();
@@ -142,7 +146,7 @@ export function App() {
     setBusy(true);
     const started = performance.now();
     try {
-      await streamChat({ question, sessionId: sid, filters: opts.filters, useScope: opts.useScope }, (ev) => {
+      await streamChat({ question, sessionId: sid, filters: opts.filters, useScope: opts.useScope, time_from: opts.time_from, time_to: opts.time_to }, (ev) => {
         switch (ev.type) {
           case 'progress': stage = String(ev.stage ?? ''); break;
           case 'meta':
@@ -180,16 +184,16 @@ export function App() {
 
   const send = useCallback((question: string) => {
     const filters = scopeFilters(scope);
-    ask(question, { filters, label: scopeLabel(filters, Object.fromEntries(scope.docs)), useScope: true });
+    ask(question, { filters, label: scopeLabel(filters, Object.fromEntries(scope.docs), scope), useScope: true, time_from: scope.time_from, time_to: scope.time_to });
   }, [ask, scope]);
 
   const regenerate = useCallback((rec: TurnRecord) => {
-    ask(rec.question, { filters: rec.filters, label: rec.label, useScope: rec.use_scope });
+    ask(rec.question, { filters: rec.filters, label: rec.label, useScope: rec.use_scope, time_from: rec.time_from, time_to: rec.time_to });
   }, [ask]);
 
   const unscope = useCallback((rec: TurnRecord) => {
     const label = [rec.label, '已取消问题里识别出的范围'].filter(Boolean).join('；');
-    ask(rec.question, { filters: rec.filters, label, useScope: false });
+    ask(rec.question, { filters: rec.filters, label, useScope: false, time_from: rec.time_from, time_to: rec.time_to });
   }, [ask]);
 
   const rated = useCallback((rec: TurnRecord, rating: 1 | -1) => {
@@ -272,7 +276,7 @@ export function App() {
   const current = sessions.find((s) => s.id === sessionId);
   const empty = !turns.length;
   const composer = (
-    <Composer busy={busy} scope={scope} onScope={setScope} onSend={send} onStop={stop} onOpenDoc={openPicked}
+    <Composer onUpload={uploads.submit} uploading={uploads.sending || Boolean(uploads.conflict) || uploads.retryBatches.length > 0} docsRevision={docsRevision} busy={busy} scope={scope} onScope={setScope} onSend={send} onStop={stop} onOpenDoc={openPicked}
       placeholder="输入问题，Enter 发送，Shift+Enter 换行" />
   );
 
@@ -293,6 +297,7 @@ export function App() {
           )}
           <h1 className="top-title">{empty ? '' : (current?.title || turns[0]?.rec.question.slice(0, 40) || '')}</h1>
         </header>
+        <UploadPanel uploads={uploads} />
         {ready === 'not_ready' && (
           <p className="banner" role="status">服务正在启动或依赖未就绪（Milvus / 编码服务 / 登记表），提问可能失败，稍后自动恢复。</p>
         )}
@@ -320,6 +325,7 @@ export function App() {
       {route.name === 'doc' && (
         <DocDrawer docId={route.docId} section={route.section} title={docTitles[route.docId] ?? ''} onClose={closeDoc} />
       )}
+      {uploads.conflict && <ConflictDialog key={uploads.conflict.batch.files.map((f) => f.name).join()} state={uploads.conflict} onResolve={uploads.resolve} onCancel={uploads.cancel} />}
       {tip && (
         <div className="tip" role="tooltip" style={{ left: tip.x, top: tip.y }}>
           {tip.title && <strong>{tip.title}</strong>}

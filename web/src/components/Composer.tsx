@@ -1,8 +1,9 @@
 // 输入框 + 检索范围（文件类型、文档，作为硬过滤 filters 发送）。Enter 发送，Shift+Enter 换行，输入法组字时不发送。
 import { useEffect, useRef, useState } from 'react';
 import { listDocs } from '../lib/api';
-import type { Doc, Filters } from '../lib/types';
-import { IconArrowUp, IconClose, IconDoc, IconFilter, IconStop } from './icons';
+import { uploadAccept, uploadConfig } from '../lib/uploads';
+import type { Doc, Filters, TimeRange } from '../lib/types';
+import { IconArrowUp, IconAttach, IconClose, IconDoc, IconFilter, IconStop } from './icons';
 
 // 与 retrieval/filters.py 的 FILE_TYPES、MAX_FILTER_ITEMS 一致。
 export const TYPE_GROUPS: [string, string[]][] = [
@@ -11,7 +12,7 @@ export const TYPE_GROUPS: [string, string[]][] = [
 ];
 export const MAX_DOCS = 100;
 
-export interface Scope { types: string[]; docs: Map<string, string> }
+export interface Scope extends TimeRange { types: string[]; docs: Map<string, string> }
 
 export function scopeFilters(scope: Scope): Filters | null {
   const file_types = TYPE_GROUPS.filter(([label]) => scope.types.includes(label)).flatMap(([, t]) => t);
@@ -28,13 +29,18 @@ interface Props {
   onStop: () => void;
   onOpenDoc: (doc: Doc) => void;
   placeholder: string;
+  onUpload: (files: File[]) => void;
+  uploading: boolean;
+  docsRevision: number;
 }
 
-export function Composer({ busy, scope, onScope, onSend, onStop, onOpenDoc, placeholder }: Props) {
+export function Composer({ busy, scope, onScope, onSend, onStop, onOpenDoc, placeholder, onUpload, uploading, docsRevision }: Props) {
+  const fileInput = useRef<HTMLInputElement>(null);
   const [text, setText] = useState('');
   const [picking, setPicking] = useState(false);
   const area = useRef<HTMLTextAreaElement>(null);
-  const count = scope.types.length + scope.docs.size;
+  const count = scope.types.length + scope.docs.size + Number(Boolean(scope.time_from || scope.time_to));
+  const invalidTime = Boolean(scope.time_from && scope.time_to && scope.time_from >= scope.time_to);
 
   // 高度随内容增长，最多 8 行左右，超出滚动。
   useEffect(() => {
@@ -48,7 +54,7 @@ export function Composer({ busy, scope, onScope, onSend, onStop, onOpenDoc, plac
 
   const submit = () => {
     const q = text.trim();
-    if (!q || busy) return;
+    if (!q || busy || invalidTime) return;
     onSend(q);
     setText('');
   };
@@ -66,6 +72,10 @@ export function Composer({ busy, scope, onScope, onSend, onStop, onOpenDoc, plac
         }} />
       <div className="composer-bar">
         <div className="composer-left">
+          <input ref={fileInput} type="file" multiple accept={uploadAccept} hidden aria-label="选择上传文件"
+            onChange={(e) => { const files = Array.from(e.target.files ?? []); e.target.value = ''; if (files.length) onUpload(files); }} />
+          <button type="button" className="icon-btn" aria-label="上传文档" disabled={uploading}
+            title={`上传文档（最多 ${uploadConfig.maxFiles} 个，单个 ${uploadConfig.maxFileMb} MB）`} onClick={() => fileInput.current?.click()}><IconAttach /></button>
           <button type="button" className={`pill${count ? ' active' : ''}`} aria-expanded={picking}
             aria-controls="scope-picker" onClick={() => setPicking(!picking)}>
             <IconFilter /> {count ? `检索范围 · ${count}` : '检索范围'}
@@ -82,15 +92,17 @@ export function Composer({ busy, scope, onScope, onSend, onStop, onOpenDoc, plac
         {busy ? (
           <button type="button" className="send stop" aria-label="停止生成" onClick={onStop}><IconStop /></button>
         ) : (
-          <button type="submit" className="send" aria-label="发送" disabled={!text.trim()}><IconArrowUp /></button>
+          <button type="submit" className="send" aria-label="发送" disabled={!text.trim() || invalidTime}><IconArrowUp /></button>
         )}
       </div>
-      {picking && <ScopePicker scope={scope} onScope={onScope} onClose={() => setPicking(false)} onOpenDoc={onOpenDoc} />}
+      {invalidTime && <p className="upload-error" role="alert">结束日期必须晚于开始日期（结束日期不含当天）。</p>}
+      {picking && <ScopePicker docsRevision={docsRevision} scope={scope} onScope={onScope} onClose={() => setPicking(false)} onOpenDoc={onOpenDoc} />}
     </form>
   );
 }
 
-function ScopePicker({ scope, onScope, onClose, onOpenDoc }: {
+function ScopePicker({ scope, onScope, onClose, onOpenDoc, docsRevision }: {
+  docsRevision: number;
   scope: Scope; onScope: (s: Scope) => void; onClose: () => void; onOpenDoc: (doc: Doc) => void;
 }) {
   const [q, setQ] = useState('');
@@ -107,7 +119,7 @@ function ScopePicker({ scope, onScope, onClose, onOpenDoc }: {
       }).catch((err) => { if (err.name !== 'AbortError') setHint(`文档列表加载失败：${err.message}`); });
     }, q ? 250 : 0);
     return () => { clearTimeout(timer); ctl.abort(); };
-  }, [q]);
+  }, [q, docsRevision]);
 
   useEffect(() => {
     const close = (e: Event) => {
@@ -140,9 +152,15 @@ function ScopePicker({ scope, onScope, onClose, onOpenDoc }: {
           </label>
         ))}
       </fieldset>
+      <fieldset className="time-range"><legend>入库时间（含开始，不含结束）</legend>
+        <label>开始日期<input type="date" aria-label="入库开始日期" value={scope.time_from ?? ''}
+          max={scope.time_to || undefined} onChange={(e) => onScope({ ...scope, time_from: e.target.value || undefined })} /></label>
+        <label>结束日期（不含）<input type="date" aria-label="入库结束日期" value={scope.time_to ?? ''}
+          min={scope.time_from || undefined} onChange={(e) => onScope({ ...scope, time_to: e.target.value || undefined })} /></label>
+      </fieldset>
       <div className="docs-head">
         <span>文档（不选为全部，最多 {MAX_DOCS} 篇）</span>
-        {(scope.docs.size > 0 || scope.types.length > 0) && (
+        {(scope.docs.size > 0 || scope.types.length > 0 || scope.time_from || scope.time_to) && (
           <button type="button" className="link" onClick={() => onScope({ types: [], docs: new Map() })}>清空范围</button>
         )}
       </div>
@@ -157,7 +175,7 @@ function ScopePicker({ scope, onScope, onClose, onOpenDoc }: {
                 disabled={!scope.docs.has(d.doc_id) && scope.docs.size >= MAX_DOCS}
                 onChange={(e) => toggleDoc(d, e.target.checked)} />
               <span className="doc-title">{d.title || d.doc_id}</span>
-              <small>{d.file_type} · v{d.version}</small>
+              <small>{d.file_type} · v{d.version}<br />入库：{d.indexed_at ? d.indexed_at.slice(0, 10) : '未知'}</small>
             </label>
             <button type="button" className="icon-btn" aria-label={`查看原文：${d.title}`} onClick={() => onOpenDoc(d)}><IconDoc /></button>
           </li>

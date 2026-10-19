@@ -346,3 +346,31 @@ sup { line-height: 0; }
   .bubble { max-width: 90%; }
   .hero-title { font-size: 21px; }
 }
+
+/* D-021：沿用面板/胶囊/暗色变量，上传任务不遮挡对话。 */
+.time-range { display: flex; flex-wrap: wrap; gap: 10px; border: 0; padding: 0; margin: 12px 0; }
+.time-range legend { margin-bottom: 6px; font-size: 13px; }
+.time-range label { display: flex; flex: 1; flex-direction: column; gap: 4px; color: var(--muted); font-size: 12px; min-width: 140px; }
+.time-range input, .conflict-dialog input, .conflict-dialog select { border: 1px solid var(--border); border-radius: 8px; padding: 7px; background: var(--panel); color: var(--text); min-width: 0; max-width: 100%; }
+.upload-panel { flex: none; margin: 0 24px 8px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 12px; background: var(--side); font-size: 13px; }
+.upload-panel p { margin: 4px 0; }
+.upload-panel summary { cursor: pointer; }
+.upload-jobs { max-height: 180px; overflow: auto; list-style: none; padding: 0; margin: 8px 0 0; }
+.upload-jobs > li { padding: 6px 0; border-top: 1px solid var(--border); }
+.upload-jobs ul { padding-left: 18px; color: var(--muted); overflow-wrap: anywhere; }
+.upload-job-head { display: flex; align-items: center; gap: 10px; }
+.upload-job-head strong { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.upload-job-head span { white-space: nowrap; }
+.upload-job-head button { display: inline-flex; align-items: center; gap: 3px; }
+.upload-error { color: var(--danger, #c53030); font-size: 13px; overflow-wrap: anywhere; }
+.modal-backdrop { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: 16px; background: #0007; }
+.conflict-dialog { width: min(560px, 100%); max-height: 85dvh; overflow-y: auto; border: 1px solid var(--border); border-radius: 20px; padding: 20px; background: var(--panel); box-shadow: var(--shadow); }
+.conflict-dialog header { display: flex; align-items: center; justify-content: space-between; }
+.conflict-dialog h2 { font-size: 18px; margin: 0; }
+.conflict-dialog p { color: var(--muted); font-size: 13px; }
+.conflict-dialog fieldset { border: 1px solid var(--border); border-radius: 12px; margin: 14px 0; padding: 10px; min-width: 0; }
+.conflict-dialog legend { overflow-wrap: anywhere; }
+.conflict-dialog label { display: flex; align-items: center; gap: 12px; margin: 8px 0; font-size: 13px; }
+.conflict-dialog input, .conflict-dialog select { flex: 1; }
+.conflict-dialog footer { display: flex; justify-content: flex-end; gap: 8px; }
+@media (max-width: 600px) { .upload-panel { margin: 0 12px 6px; } .conflict-dialog { padding: 14px; } }

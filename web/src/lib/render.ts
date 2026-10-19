@@ -280,9 +280,10 @@ export function sourceMeta(s: Source): string {
 
 // 硬过滤的可读说明（纯文本，React 负责转义）：文件类型 + 文档标题。
 export function scopeLabel(filters: { file_types?: string[]; doc_ids?: string[] } | null | undefined,
-  titles: Record<string, string> = {}): string {
+  titles: Record<string, string> = {}, time: { time_from?: string; time_to?: string } = {}): string {
   const parts: string[] = [];
   if (filters?.file_types?.length) parts.push(filters.file_types.join('/') + ' 文件');
   for (const id of filters?.doc_ids ?? []) parts.push(`《${titles[id] ?? id}》`);
+  if (time.time_from || time.time_to) parts.push(`入库时间 [${time.time_from || '不限'}, ${time.time_to || '不限'})`);
   return parts.length ? '检索范围：' + parts.join('、') : '';
 }

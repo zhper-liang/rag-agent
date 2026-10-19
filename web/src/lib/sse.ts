@@ -1,5 +1,5 @@
 // SSE 帧切分与 /api/chat 流式读取。sse.py 每帧一行 `data: {json}`。
-import type { Filters } from './types';
+import type { Filters, TimeRange } from './types';
 
 export interface ChatEvent { type: string; [key: string]: unknown }
 
@@ -32,7 +32,7 @@ export async function errorText(res: Response): Promise<string> {
   return `HTTP ${res.status}`;
 }
 
-export interface ChatRequest { question: string; sessionId: string; filters: Filters | null; useScope: boolean }
+export interface ChatRequest extends TimeRange { question: string; sessionId: string; filters: Filters | null; useScope: boolean }
 
 export async function streamChat(req: ChatRequest, onEvent: (ev: ChatEvent) => void, signal: AbortSignal): Promise<void> {
   const res = await fetch('/api/chat', {
@@ -40,6 +40,8 @@ export async function streamChat(req: ChatRequest, onEvent: (ev: ChatEvent) => v
     headers: { 'Content-Type': 'application/json', 'X-Session-ID': req.sessionId },
     body: JSON.stringify({
       question: req.question,
+      ...(req.time_from ? { time_from: req.time_from } : {}),
+      ...(req.time_to ? { time_to: req.time_to } : {}),
       ...(req.filters ? { filters: req.filters } : {}),
       ...(req.useScope ? {} : { use_scope: false }),
     }),
