@@ -1,4 +1,4 @@
-"""Milvus 建表冒烟（开发计划.md §3.5）：create_collection、写入 1000 条假数据、建索引、hybrid search。
+"""Milvus 建表冒烟（总揽.md §4.4）：create_collection、写入 1000 条假数据、建索引、hybrid search。
 
 用独立的集合 rag_chunks_smoke，每次重建；不会碰 services.milvus.collection 指向的正式集合。
 地址、维度、检索参数取 config.yaml；用户名密码取环境变量（授权关闭时可以为空）。

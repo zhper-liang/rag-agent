@@ -4,16 +4,16 @@ This file provides guidance to Codex (Codex.ai/code) when working with code in t
 
 ## Current state
 
-This repo is a RAG Q&A system (LangGraph + Milvus DISKANN). P0 and the four parallel lines L1–L4 (`docs/开发计划.md` §3–§4) are done, and the four-window protocol ended on 2026-10-03; work is now a single session on `main`. Milestone status is in `开发计划.md` §6: M1b is done as a local pipeline (MinerU cloud parse quality confirmed, D-018 B closed), M4 passed on 2026-10-19 (471-question set, 40-question stratified baseline; the full 471-question run is deferred to tuning), and M5 is a single-host plan in `docs/服务化部署.md` (systemd user units in `deploy/systemd/` for API + embed, compose for Milvus; monitoring stack, auth, backups and an ingest lock deferred). It holds:
+This repo is a RAG Q&A system (LangGraph + Milvus DISKANN). Work is a single session on `main`; the four-window protocol ended on 2026-10-03. Current architecture, contracts and verified capability boundaries are in `docs/总揽.md` §4 and §8. M4 passed on 2026-10-19 with a 471-question set and a 40-question stratified double-run baseline, not a full 471-question run. M5 operations, the React frontend and upload/time filtering are implemented; single-host deployment and remaining limitations are in `docs/服务化部署.md`. Old development plans are frozen in `archive/` and are not maintained.
 
-- 13 Chinese design docs in `docs/`. `docs/总揽.md` is the entry point. It has the architecture, the LangGraph state and graph, the tech stack, the directory tree (§6) and the decision log (§7).
+- 12 formal Chinese design docs in `docs/`. `docs/总揽.md` is the entry point. It has the architecture, the LangGraph state and graph, the tech stack, the directory tree (§6) and the decision log (§7).
 - `config.yaml`: every tunable parameter for the whole system. `src/ragagent/config.py` models it and validates it at startup.
 - `prompts/v1/*.j2`: the real Jinja2 prompt templates.
 - `src/ragagent/{ingest,index,retrieval,preprocess,context,prompt,llm,postprocess,graph,api,monitor}`: the implemented packages. Each doc's "目录与模块" section says what goes where. `api/static/` is the same-origin demo page (`总揽.md` §4.3).
 - `eval/`: question generation, the quick/full eval CLI, RAGAS scoring and calibration (`eval/README.md`). Reports and datasets built from the real corpus stay gitignored.
 - `tests/`: unit and integration tests, contract tests (every doc model must match its `models.py` definition via AST), fixtures in `tests/fixtures/`, and three stub services in `tests/stubs/` (embed + rerank, OpenAI-compatible LLM).
 - `docker-compose.milvus.yml` + `milvus.yaml`: Milvus 2.5.18 standalone. MinIO credentials come from `.env`. The production collection name `rag_chunks` is an alias for the real index (D-019).
-- `Codex-codex/`: the archived board, status and decision files of the parallel lines. Read-only history now.
+- `claude-codex/`: the archived board, status and decision files of the parallel lines. Read-only history now.
 
 Talk to the user in Chinese. Docs are also written in Chinese.
 
@@ -30,7 +30,7 @@ Commands (Python 3.12 via uv; don't invent others):
 
 ## Parallel lines (ended)
 
-L1–L4 ran as four Codex windows from 2026-10-01 to 2026-10-03 under `Codex-codex/README.md`. The protocol is over: don't post to the board or take its locks. The general git rules still hold: commit only specific paths, and never `git add .`/`-A`, `stash`, `reset`, `checkout --`, `restore`, `clean` or `--amend`.
+L1–L4 ran as four Codex windows from 2026-10-01 to 2026-10-03 under `claude-codex/README.md`. The protocol is over: don't post to the board or take its locks. The general git rules still hold: commit only specific paths, and never `git add .`/`-A`, `stash`, `reset`, `checkout --`, `restore`, `clean` or `--amend`.
 
 ## How design work is done here
 
@@ -42,7 +42,7 @@ L1–L4 ran as four Codex windows from 2026-10-01 to 2026-10-03 under `Codex-cod
 
 ## Verifying doc code
 
-Code blocks in the docs are drafts, but they have been executed. Keep it that way when you edit them.
+Code blocks in the formal docs have been executed and are covered by contract checks. Keep them verified when you edit them.
 
 1. Extract the fenced `python` blocks from the md file with a regex and `exec` them. Stub any external SDKs (openai, pymilvus, langchain).
 2. Run the extraction script from `/tmp` with a pinned temporary env. System Python is 3.14, but the project targets 3.12. For example:
@@ -99,3 +99,7 @@ Each of these contracts spans several docs. Change one side and you must change 
 ## Progress tracking
 
 Track multi-step work with the `planning-with-files-zh` skill. The session keeps `task_plan.md` / `findings.md` / `progress.md` in the repo root (gitignored). `.planning/L{n}/` holds the archived plans and evidence of the parallel lines.
+
+## Documentation lifecycle
+
+Keep `docs/` limited to maintained architecture, interfaces, module designs and operations. Freeze obsolete plans in root `archive/`, never under `docs/`. Extract lasting technical conclusions into the relevant formal document before deleting fully superseded temporary notes. Preserve unique evidence and unresolved work. Historical four-line records remain read-only; local planning snapshots live under `.planning/`.

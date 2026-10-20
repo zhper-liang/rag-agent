@@ -1,4 +1,4 @@
-"""三个桩的冒烟测试：走真实 HTTP，LLM 桩用真实的 ChatOpenAI 客户端调用（开发计划.md §3.4）。"""
+"""三个桩的冒烟测试：走真实 HTTP，LLM 桩用真实的 ChatOpenAI 客户端调用（总揽.md §4.4）。"""
 
 import asyncio
 import json

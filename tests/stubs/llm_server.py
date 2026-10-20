@@ -1,4 +1,4 @@
-"""OpenAI 兼容接口的桩（开发计划.md §3.4）。
+"""OpenAI 兼容接口的桩（总揽.md §4.4）。
 
 - POST /v1/chat/completions：流式（SSE）与非流式；带 tools 时返回 tool call（结构化输出）
 - 回答正文取自 tests/fixtures/answers/{name}.md，tool call 参数取自对应的夹具
