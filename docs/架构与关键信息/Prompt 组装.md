@@ -5,7 +5,7 @@
 把系统提示、对话历史、上下文段落、原图和问题拼成发给生成模型的消息：
 - 资料在前、问题在后；资料和问题都放在标签里，并声明其中的内容只是数据。
 - 引用写成句末的 `[n]`；资料不够时允许模型用自己的知识补充，但必须放在固定标题下单独成段。
-- 模板放在独立的 Jinja2 文件里（`prompts/v1/`），按版本管理。
+- 模板放在独立的 Jinja2 文件里（`prompts/{version}/`），按版本管理。
 - 输出和服务商无关的中间格式，转成 OpenAI 兼容接口的消息格式由[大模型生成](大模型生成.md)负责；接入点不支持图片时，图片块在那一步去掉，只留说明文字。
 
 输入（来自 RAGState）：`intent`、`question`、`standalone_question`、`messages`（历史）、`context_blocks`、`scope_note`、`retrieval.degraded`；fallback 时还需要 `candidates`。
@@ -50,7 +50,7 @@ user（本轮）：
 
 ## 4. 系统提示要点（system_rag.j2）
 
-完整内容见 `prompts/v1/system_rag.j2`，要点如下：
+完整内容见 `prompts/{version}/system_rag.j2`，要点如下：
 
 | 规则 | 内容 |
 |------|------|
@@ -97,11 +97,13 @@ def attr(value: str) -> str:
 
 ## 7. 对话历史
 
+生成继续要求 `[n]`；`【n】` 仅为后处理与历史清理的兼容输入（D-022），不改变 Prompt 输出规范。
+
 - 取最近 3 轮（一问一答算一轮），作为独立的 user / assistant 消息放在本轮消息之前。
 - 每条历史回答截到 800 token，保留开头，结尾加 `……（已截断）`；历史总共不超过 3000 token，超了从最早的一轮开始丢。
-- 历史回答里的 `[n]` 要去掉：它们指向上一轮的资料，留着会和本轮编号混淆。
-  - 首选：[后处理](后处理.md)在保存回答时额外存一份去掉引用标记的版本（`plain`），这里直接用。后处理知道哪些 `[n]` 是真正的引用，不会误删代码里的 `arr[1]`。
-  - 兜底：没有 `plain` 的旧消息，用正则去掉 `[数字]`，跳过代码块和行内代码。
+- 历史回答里的 `[n]` / `【n】` 要去掉：它们指向上一轮的资料，留着会和本轮编号混淆。
+  - 首选：[后处理](后处理.md)在保存回答时额外存一份去掉引用标记的版本（`plain`），这里直接用。后处理知道哪些 `[n]` / `【n】` 是真正的引用，不会误删代码里的 `arr[1]`。
+  - 兜底：没有 `plain` 的旧消息，复用后处理解析规则去掉 `[数字]` / `【数字】`，跳过代码块和行内代码。
 - 补充说明段保留，历史里的图片不重新发送。
 - clarify 轮（反问和用户的回答）照常算一轮。
 
@@ -207,7 +209,7 @@ def build_user_rag(env, blocks, question, standalone, scope_note, load_image) ->
 
 ## 12. 版本管理
 
-- 模板目录：`prompts/{version}/`，当前 `v1`。改 Prompt 时复制出 `v2` 修改，`config.yaml` 的 `prompt.version` 切过去。
+- 模板目录：`prompts/{version}/`，当前 `v2`（`config.yaml` 的 `prompt.version`）。`v1` 原件保留；v2 在回答范围与证据对应上收紧，见本文末节。改 Prompt 时复制出新目录修改，再把 `prompt.version` 切过去。
 - 每次请求把 `version` 写进日志和 trace，评测时按版本对比效果（见[评估与监控](评估与监控.md)）。
 - 模板改动也走代码评审，和代码一起提交。
 
@@ -229,7 +231,7 @@ def build_user_rag(env, blocks, question, standalone, scope_note, load_image) ->
 ## 15. 目录与模块
 
 ```
-prompts/v1/
+prompts/{version}/       # 当前 v2，v1 原件保留
 ├── system_rag.j2        # rag / rag_empty 共用的系统提示
 ├── user_rag.j2          # 资料 + 问题
 ├── user_rag_empty.j2    # 降级导致资料为空
@@ -254,3 +256,6 @@ src/ragagent/prompt/
 - 系统提示约 1k token，可能达不到部分模型开启 prompt 缓存的最低长度，接入后按实际情况决定是否开启。
 - 历史回答使用[后处理](后处理.md)保存的去引用 `plain` 版本；该契约已实现，不把旧引用编号带入新一轮 Prompt。
 - 允许补充后，模型更可能把资料里没有的内容写进带引用的句子，需要后处理逐句校验引用。
+
+## 2026-10-25 Prompt v2
+保留v1原件；v2增加回答范围和证据对应要求：数值题短答、多问题逐项覆盖、按用户维度比较、结论使用最直接的一至两个来源，避免无关扩写。生成max_tokens保持不变。

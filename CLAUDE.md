@@ -4,22 +4,26 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Current state
 
-This repo is a RAG Q&A system (LangGraph + Milvus DISKANN). Work is a single session on `main`; the four-window protocol ended on 2026-10-03. Current architecture, contracts and verified capability boundaries are in `docs/总揽.md` §4 and §8. M4 passed on 2026-10-19 with a 471-question set and a 40-question stratified double-run baseline, not a full 471-question run. M5 operations, the React frontend and upload/time filtering are implemented; single-host deployment and remaining limitations are in `docs/服务化部署.md`. Old development plans are frozen in `archive/` and are not maintained.
+This repo is a RAG Q&A system (LangGraph + Milvus DISKANN). Work is a single session on `main`; the four-window protocol ended on 2026-10-03 and its records are gone. Current architecture, contracts and verified capability boundaries are in `docs/架构与关键信息/总揽.md` §4 and §8. M4 passed on 2026-10-19 with a 471-question set and a 40-question stratified double-run baseline, not a full 471-question run. M5 operations, the React frontend and upload/time filtering are implemented; single-host deployment and remaining limitations are in `docs/架构与关键信息/服务化部署.md`. Open work is in `docs/计划/后续工作.md`; history is in `docs/已完成的计划/`.
 
-- 12 formal Chinese design docs in `docs/`. `docs/总揽.md` is the entry point. It has the architecture, the LangGraph state and graph, the tech stack, the directory tree (§6) and the decision log (§7).
+`docs/` holds three categories; `docs/README.md` is the entry point.
+
+- `docs/架构与关键信息/`: 13 maintained Chinese docs (12 design docs plus `启动方法.md`, the runbook). `总揽.md` is the main entry: architecture, LangGraph state and graph, tech stack, directory tree (§6) and decision log (§7).
+- `docs/已完成的计划/`: frozen history, read-only — `开发计划.md` (the old construction plan) and `项目开发与调优日志.md` (every tuning round and its numbers). Numbers from different rounds are not comparable.
+- `docs/计划/后续工作.md`: the only place for unfinished work, known limits and next steps.
 - `config.yaml`: every tunable parameter for the whole system. `src/ragagent/config.py` models it and validates it at startup.
-- `prompts/v1/*.j2`: the real Jinja2 prompt templates.
+- `prompts/{version}/*.j2`: the real Jinja2 prompt templates. `prompt.version` in `config.yaml` is `v2`; `v1/` is kept as the previous release.
 - `src/ragagent/{ingest,index,retrieval,preprocess,context,prompt,llm,postprocess,graph,api,monitor}`: the implemented packages. Each doc's "目录与模块" section says what goes where. `api/static/` is the same-origin demo page (`总揽.md` §4.3).
 - `eval/`: question generation, the quick/full eval CLI, RAGAS scoring and calibration (`eval/README.md`). Reports and datasets built from the real corpus stay gitignored.
 - `tests/`: unit and integration tests, contract tests (every doc model must match its `models.py` definition via AST), fixtures in `tests/fixtures/`, and three stub services in `tests/stubs/` (embed + rerank, OpenAI-compatible LLM).
 - `docker-compose.milvus.yml` + `milvus.yaml`: Milvus 2.5.18 standalone. MinIO credentials come from `.env`. The production collection name `rag_chunks` is an alias for the real index (D-019).
-- `claude-codex/`: the archived board, status and decision files of the parallel lines. Read-only history now.
 
 Talk to the user in Chinese. Docs are also written in Chinese.
 
 Commands (Python 3.12 via uv; don't invent others):
 
-- Tests: `make test` (= `uv run pytest`).
+- Tests: `make test` (= `uv run pytest`, `testpaths = tests`, `-q`). Single test: `uv run pytest tests/postprocess/test_postprocess.py::test_name`.
+- Frontend (`web/`, React + Vite, Node ≥ 22.12; run `npm ci` first): `make test-web` (= `npm test`, vitest), `npm run typecheck`, `npm run build`, `npm run dev`. Single file: `npx vitest run src/lib/render.test.ts`.
 - Milvus: `docker compose -f docker-compose.milvus.yml up -d` / `down`. etcd, MinIO and Milvus metadata are in `volumes/` (gitignored). Milvus's local cache (`localStorage.path`: mmap and DiskANN files) is in the named volume `milvus_local`, because on Docker Desktop bind mounts go through virtiofs and make mmap loads about 80x slower (向量化建库 §6.4).
 - Milvus smoke: `uv run --env-file .env python scripts/milvus_smoke.py`. It uses its own `rag_chunks_smoke` collection.
 - Milvus measurements (向量化建库 §6.4): `uv run --env-file .env python scripts/milvus_bench.py {mmap,recall}`. They take minutes and release other loaded collections.
@@ -28,9 +32,9 @@ Commands (Python 3.12 via uv; don't invent others):
 - Eval: `uv run python -m eval.run --tier {quick,full} --fixture` offline; real runs need `--env-file .env`, `--chunks` and an explicit `--max-calls` (`eval/README.md`).
 - Stubs standalone: `uv run python -m tests.stubs.embed_server` (also serves rerank), `tests.stubs.rerank_server` (8002), `tests.stubs.llm_server` (8003). All take `--port`; the embed stub defaults to `services.embed.port`.
 
-## Parallel lines (ended)
+## Git rules
 
-L1–L4 ran as four Claude Code windows from 2026-10-01 to 2026-10-03 under `claude-codex/README.md`. The protocol is over: don't post to the board or take its locks. The general git rules still hold: commit only specific paths, and never `git add .`/`-A`, `stash`, `reset`, `checkout --`, `restore`, `clean` or `--amend`.
+Commit only specific paths; never `git add .`/`-A`, `stash`, `reset`, `checkout --`, `restore`, `clean` or `--amend`. The four-window parallel protocol (L1–L4, 2026-10-01 to 10-03) is over and its board, task sheets and message logs have been deleted; the decisions it produced are recorded in `总揽.md` §7.
 
 ## How design work is done here
 
@@ -49,7 +53,7 @@ Code blocks in the formal docs have been executed and are covered by contract ch
    `uv run --quiet --python 3.12 --with pyyaml==6.0.2 --with jinja2==3.1.6 python /tmp/check.py`
 3. Check YAML with a SafeLoader subclass that rejects duplicate keys.
 4. Check every doc for unbalanced code fences:
-   `for f in docs/*.md; do n=$(grep -c '^[ \t]*```' "$f"); [ $((n % 2)) -ne 0 ] && echo "odd: $f"; done`
+   `for f in docs/架构与关键信息/*.md; do n=$(grep -c '^[ \t]*```' "$f"); [ $((n % 2)) -ne 0 ] && echo "odd: $f"; done`
    Inside a code block, never write three literal backticks. Use `` `{3,} `` or `"`" * 3`. This broke `后处理.md` once.
 5. Delete temp scripts afterwards.
 
@@ -73,7 +77,7 @@ Each of these contracts spans several docs. Change one side and you must change 
   - `build_expr` in `检索与重排.md` §4.2 does this.
   - Soft filters come from `scope` in the question and are resolved to doc_ids via the registry DB, never taken from LLM text.
   - Hard filters come from API params.
-- **Prompt tags.** The `RESERVED` tag list in `escape_tags` (`Prompt 组装.md` §5) must include every tag used in `prompts/v1/*.j2`.
+- **Prompt tags.** The `RESERVED` tag list in `escape_tags` (`Prompt 组装.md` §5) must include every tag used in the active `prompts/{version}/*.j2`.
   - Escape only those tags. Never HTML-escape, because it breaks code in answers.
   - Jinja runs with autoescape off, `StrictUndefined` on, and the `esc` and `attr` filters.
 - **Supplement heading.** `prompt.supplement_heading` is used both by `system_rag.j2` and by the answer parsing in `后处理.md` §3.2.
@@ -98,8 +102,18 @@ Each of these contracts spans several docs. Change one side and you must change 
 
 ## Progress tracking
 
-Track multi-step work with the `planning-with-files-zh` skill. The session keeps `task_plan.md` / `findings.md` / `progress.md` in the repo root (gitignored). `.planning/L{n}/` holds the archived plans and evidence of the parallel lines.
+Track multi-step work with the `planning-with-files-zh` skill. The session keeps `task_plan.md` / `findings.md` / `progress.md` in the repo root (gitignored); they are scratch files, never deliverables, and are deleted once their conclusions land in a doc. `.planning/` holds experiment evidence and planning snapshots (gitignored).
+
+Unfinished work belongs in `docs/计划/后续工作.md`, not in a root scratch file. When a task finishes, move its lasting conclusions into the relevant doc under `docs/架构与关键信息/` and its numbers into `docs/已完成的计划/项目开发与调优日志.md`.
 
 ## Documentation lifecycle
 
-Keep `docs/` limited to maintained architecture, interfaces, module designs and operations. Freeze obsolete plans in root `archive/`, never under `docs/`. Extract lasting technical conclusions into the relevant formal document before deleting fully superseded temporary notes. Preserve unique evidence and unresolved work. Historical four-line records remain read-only; local planning snapshots live under `.planning/`.
+`docs/` has exactly three subdirectories and nothing else at its top level except `README.md`.
+
+- `架构与关键信息/`: maintained architecture, interfaces, module designs, operations and lasting technical conclusions. Changes here must stay in sync with the code.
+- `已完成的计划/`: frozen plans and history. Read-only; never edit a past round's numbers.
+- `计划/后续工作.md`: unresolved work, known limits and next steps. Update it when work finishes; delete entries that no longer apply.
+
+Before deleting a temporary note, extract any lasting conclusion into `架构与关键信息/` and any unique measurement into `已完成的计划/项目开发与调优日志.md`. Never leave an unfinished item only in `.planning/` or in a root scratch file.
+
+Code blocks in `架构与关键信息/` are executed and covered by `tests/test_contracts.py`, which globs `docs/架构与关键信息/*.md`. Docs in the other two categories are not contract-checked, so never put a model or function definition that must match source code there.
