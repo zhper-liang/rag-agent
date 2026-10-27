@@ -7,13 +7,13 @@ from uuid import uuid4
 
 from ragagent.context.models import ContextBlock
 from ragagent.postprocess.offsets import utf16_citations, utf16_offset
-from ragagent.postprocess.parse import check_format, find_supplement, mask_code, split_sentences
+from ragagent.postprocess.parse import citation_format_issues, check_format, find_supplement, mask_code, split_sentences
 from ragagent.postprocess.plain import make_plain
 from ragagent.postprocess.sources import build_sources
 from ragagent.postprocess.verify import VerifyDegraded, check_support, support_warning
 
 
-async def build_final(state, cfg, rerank_pairs, *, count=len, message_id=None):
+async def build_final(state, cfg, rerank_pairs, *, count=len, message_id=None, verify_claims=None):
     start = time.perf_counter()
     answer, meta = state.get('answer', ''), state.get('gen_meta', {})
     status = meta.get('status', 'ok')
@@ -21,9 +21,11 @@ async def build_final(state, cfg, rerank_pairs, *, count=len, message_id=None):
         return None, None, {}
     mode = meta.get('scene', state.get('intent', 'rag'))
     sents, supp_at, degraded = [], None, False
+    format_issues = []
     blocks = {b.cite: b for b in (ContextBlock.model_validate(b) for b in state.get('context_blocks', []))}
     if mode in ('rag', 'rag_empty'):
         masked = mask_code(answer)
+        format_issues = citation_format_issues(masked, blocks)
         supp_at = find_supplement(masked, cfg.prompt.supplement_heading)
         sents = split_sentences(answer, masked, supp_at)
         check_format(sents, blocks)
@@ -31,9 +33,10 @@ async def build_final(state, cfg, rerank_pairs, *, count=len, message_id=None):
         chunks += [c for cs in state.get('expansions', {}).values() for c in cs]
         chunk_texts = {c['chunk_id']: c['text'] for c in chunks if 'chunk_id' in c and 'text' in c}
         try:
-            await check_support(sents, blocks, chunk_texts, rerank_pairs, cfg.postprocess, count=count)
+            await check_support(sents, blocks, chunk_texts, rerank_pairs, cfg.postprocess, count=count, question=state.get('question', ''))
         except VerifyDegraded:
             degraded = True
+    entailment_checked = await verify_claims(sents, blocks) if verify_claims is not None and sents else 0
     warned = support_warning(sents, cfg.postprocess)
     notices = [cfg.postprocess.notices.unsupported] if warned else []
     if status in ('truncated', 'interrupted'):
@@ -49,6 +52,11 @@ async def build_final(state, cfg, rerank_pairs, *, count=len, message_id=None):
                  coverage=covered / len(body) if body else 0., covered=covered,
                  uncovered=len(body) - covered, warned=warned, verify_degraded=degraded,
                  verify_ms=round((time.perf_counter() - start) * 1000))
+    stats.update(citation_format_issues=format_issues,
+                 citation_format_status=('not_applicable' if mode not in ('rag', 'rag_empty') else
+                     'invalid_syntax' if format_issues else
+                     'invalid_number' if any(c['state'] == 'invalid_number' for c in citations) else
+                     'ok' if citations else 'missing'))
     valid = sum(c['state'] in ('ok', 'unsupported', 'unverified') for c in citations)
     supported = sum(c['state'] == 'ok' for c in citations)
     checked = sum(c['state'] in ('ok', 'unsupported') for c in citations)
@@ -56,5 +64,8 @@ async def build_final(state, cfg, rerank_pairs, *, count=len, message_id=None):
     # 只有校验降级（verify_degraded）才算没测成，保持 None。
     stats.update(citation_validity=valid / len(citations) if citations else 0.,
                  citation_support=supported / checked if checked else 0.,
-                 checked_citations=checked)
+                 checked_citations=checked, entailment_checked=entailment_checked,
+                 verification_coverage=checked / valid if valid else 0.,
+                 unverified_citations=sum(c['state'] == 'unverified' for c in citations),
+                 supported_claim_coverage=sum(any(c['state'] == 'ok' for c in s.cites) for s in body) / len(body) if body else 0.)
     return event, make_plain(answer, sents, status, cfg.postprocess), stats

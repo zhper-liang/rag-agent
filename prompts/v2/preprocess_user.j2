@@ -1,0 +1,7 @@
+<history>
+{%- for t in history %}
+用户：{{ t.question | esc }}
+助手：{{ t.answer | esc }}
+{%- endfor %}
+</history>
+<question>{{ question | esc }}</question>

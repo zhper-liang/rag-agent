@@ -21,6 +21,8 @@ from ragagent.prompt.models import ImagePart, Message, TextPart
 from ragagent.retrieval.models import Expansion, Hit, RetrievalResult
 
 DOCS = Path(__file__).resolve().parents[1] / "docs"
+# docs/ 按 架构与关键信息 / 已完成的计划 / 计划 三类分目录，契约定义只出现在「架构与关键信息」
+DOC_GLOB = "架构与关键信息/*.md"
 FENCE = re.compile(r"^```python\n(.*?)^```", re.S | re.M)
 
 # 模块 -> 必须与文档逐字一致的定义
@@ -57,7 +59,7 @@ def _defs(tree: ast.Module) -> dict[str, str]:
 
 def _doc_defs() -> dict[str, set[str]]:
     out: dict[str, set[str]] = {}
-    for md in DOCS.glob("*.md"):
+    for md in DOCS.glob(DOC_GLOB):
         for block in FENCE.findall(md.read_text(encoding="utf-8")):
             if block[:1] in " \t":      # 缩进的块是上一块的续写片段
                 continue
@@ -80,7 +82,7 @@ def test_matches_doc(module, name):
 def test_every_doc_model_is_covered():
     covered = {n for names in CONTRACTS.values() for n in names}
     models = set()
-    for md in DOCS.glob("*.md"):
+    for md in DOCS.glob(DOC_GLOB):
         for block in FENCE.findall(md.read_text(encoding="utf-8")):
             if block[:1] in " \t":
                 continue

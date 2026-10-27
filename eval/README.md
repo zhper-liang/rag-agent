@@ -172,3 +172,17 @@ make test
 
 告警阈值/窗口/持续时间/min_count只读 `monitor.alerts`。外部Milvus集成测试默认跳过，
 `make test` 中的skip不能当作该外部项通过；真实M4缺项见协作待决单。
+
+
+## 引用格式离线回归
+
+只消费已保存的双跑 `states.jsonl`，比较旧 `[n]` 规则和兼容 `[n]` / `【n】` 规则；不调用生成、重排或评测模型，不重写输入、不更新基线。`--heading` 应取 `config.yaml` 的 `prompt.supplement_heading`，例如当前项目可运行：
+
+```bash
+uv run python -m eval.citation_format_regression --states .planning/L4/m4/m4final5-states.jsonl --heading "$(uv run python -c 'import yaml; print(yaml.safe_load(open("config.yaml"))["prompt"]["supplement_heading"])')" --output eval/reports/citation-format-regression.json
+```
+
+历史原件只读，报告写入 gitignored `eval/reports/`。`added_unverified` 只表示编号存在，不能当作受支持；支持率仍需在原阈值下对真实句子-引用窗口重新打分。本回归显式记录 `support_revalidated=false`。
+
+### 2026-10-25 评分校准约定
+事实参考`reference`只存答案事实，必答/可选/禁答规则存独立rubric；单轮评分使用当前问题，多轮使用与当前对话一致的standalone。明确指定文档的题目必须标注scope_doc_ids。保存states包括soft_filters、retrieval、hits、candidates和standalone_question，支持逐题范围与筛选诊断。旧报告不可覆盖；评分标准变更后的重评单列，不记为系统能力收益。

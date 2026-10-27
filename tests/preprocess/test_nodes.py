@@ -161,7 +161,9 @@ def test_quick_grade_failure_still_returns_one_round_context_and_prior_intent():
     async def run():
         fake = FakeMilvus([chunk(text='完全不同资料')])
         async with httpx.AsyncClient(transport=httpx.ASGITransport(app=create_app()), base_url='http://stub') as stub:
-            deps = Deps(config(), len, milvus=fake, embed_client=stub, rerank_client=stub,
+            base = config()
+            cfg = base.model_copy(update={'grade': base.grade.model_copy(update={'pass_score': .4})})
+            deps = Deps(cfg, len, milvus=fake, embed_client=stub, rerank_client=stub,
                         structured_call=structured({'intent': 'clarify', 'standalone_question': '不存在查询'}))
             state = await run_pipeline('哪个', deps, messages=[HumanMessage('旧问'), AIMessage('哪个？', additional_kwargs={'intent': 'clarify'})])
             assert state['intent'] == 'rag' and state['prev_intent'] == 'clarify'

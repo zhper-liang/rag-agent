@@ -62,7 +62,7 @@ def test_m3_real_l2_nodes_conditional_paths(tmp_path, llm_url, embed_url, case):
         if case == 'degraded':
             return httpx.Response(503, json={'detail': 'unavailable'})
         n = len(data.get('passages', data.get('pairs', [])))
-        score = 1. if case == 'retry' and len(rerank_calls) > 1 else .1
+        score = 1. if case == 'retry' and len(rerank_calls) > 1 else cfg.grade.pass_score / 2
         return httpx.Response(200, json={'scores': [score] * n})
     reranker = httpx.AsyncClient(base_url=embed_url, transport=httpx.MockTransport(transport))
     dep = deps(cfg, embed_url, rerank_client=reranker)

@@ -194,7 +194,7 @@ async def evaluate(dataset, chunks, backend, *, tier, cfg, collection, config_ha
         if row["missing_metrics"] and row["status"] == "ok":
             row["status"] = "partial"
         if states_output is not None:
-            artifact = {"run":run_label,"case":case,"state":{k:result.get(k) for k in ("answer","context_blocks","gen_meta")}}
+            artifact = {"run":run_label,"case":case,"state":{k:result.get(k) for k in ("answer","context_blocks","gen_meta","soft_filters","retrieval","hits","candidates","standalone_question")}}
             with Path(states_output).open("a") as stream:
                 stream.write(json.dumps(artifact,ensure_ascii=False,allow_nan=False)+"\n")
         records.append(row)

@@ -125,7 +125,7 @@ def clean_answer(answer, heading):
 
 
 def sample(case, state, cfg):
-    return SingleTurnSample(user_input=case['expect'].get('standalone') or case['turns'][-1]['question'],
+    return SingleTurnSample(user_input=(case['expect']['standalone'] if case['type'] == 'multi_turn' else case['turns'][-1]['question']),
                             response=clean_answer(state.get('answer', ''), cfg.prompt.supplement_heading),
                             retrieved_contexts=[b['text'] for b in state.get('context_blocks', [])],
                             reference=case['reference'])

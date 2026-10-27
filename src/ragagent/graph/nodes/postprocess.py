@@ -8,6 +8,7 @@ from langgraph.runtime import Runtime
 from ragagent.graph.deps import Deps, emit
 from ragagent.graph.state import RAGState
 from ragagent.postprocess.final import build_final
+from ragagent.postprocess.entailment import verify_claims
 from ragagent.llm.observability import current_message_id
 from ragagent.retrieval.http import post_json
 
@@ -21,7 +22,10 @@ async def postprocess_node(state: RAGState, runtime: Runtime[Deps]) -> dict:
             {'pairs': pairs, 'max_length': cfg.postprocess.rerank_max_length}, cfg.postprocess.verify_timeout_s)
         return response['scores']
 
-    event, plain, stats = await build_final(state, cfg, rerank_pairs, count=deps.count, message_id=current_message_id())
+    async def entailment(sents, blocks):
+        return await verify_claims(sents, blocks, state['question'], cfg)
+
+    event, plain, stats = await build_final(state, cfg, rerank_pairs, count=deps.count, message_id=current_message_id(), verify_claims=entailment)
     if event is None:
         return {}
     emit(runtime, event)

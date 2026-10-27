@@ -1,0 +1,11 @@
+<question>{{ question | esc }}</question>
+<tried>
+{%- for q in tried %}
+- {{ q | esc }}
+{%- endfor %}
+</tried>
+<hints>
+{%- for h in hints %}
+- {{ h | esc }}
+{%- endfor %}
+</hints>

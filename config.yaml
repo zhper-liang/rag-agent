@@ -124,16 +124,16 @@ retrieval:
   search_list: 100                    # DISKANN 检索参数，必须 ≥ top_k
   weights: {dense: 0.5, sparse: 0.5}  # M4 校准：Recall@30 0.911（0.7 档 0.869）
   per_query_limit: 50
-  candidates: 30                      # 送进重排的数量
+  candidates: 40                      # 送进重排的数量；30 时 Recall@30 0.911，调到 40 待评测确认
   timeout_ms: 10000                   # 编码 HTTP + Milvus 检索/回表/扩展的单次超时；1s 在 GPU 争用时直接失败
 
 rerank:
   model: BAAI/bge-reranker-v2-m3
   max_length: 512
-  threshold: 0.3
-  per_doc_cap: 3
-  top_n: 8
-  timeout_ms: 2000
+  threshold: 0.05
+  per_doc_cap: 10
+  top_n: 10                           # 由 8 调大，待评测确认
+  timeout_ms: 3000
 
 expansion:
   section_max_tokens: 1500            # 所在节不超过该值时整节取回；上下文构造用同一个值
@@ -141,7 +141,7 @@ expansion:
   images_total: 4
 
 grade:
-  pass_score: 0.4                     # M4 校准：J 最优点 0.333 紧贴无答案题最高分 0.322，取 0.4 留余量（J 0.917）
+  pass_score: 0.05                    # 联合筛选参数实验；修订30题单轮验证
   max_retries: 2
 
 # ───────── 在线：上下文构造（上下文构造.md）─────────
@@ -158,7 +158,7 @@ context:
 # ───────── 在线：Prompt 组装（Prompt 组装.md）─────────
 prompt:
   dir: prompts
-  version: v1                         # 模板目录 prompts/{version}/，记进日志
+  version: v2                         # 模板目录 prompts/{version}/，记进日志
   supplement_heading: "**补充说明（以下内容不来自资料）**"   # 模板和后处理共用
   history_turns: 3
   history_answer_tokens: 800

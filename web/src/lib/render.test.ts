@@ -158,3 +158,30 @@ describe('其它', () => {
       .toEqual({ events: [{ type: 'token', text: 'a\n' }], rest: 'data: {"type":"fi' });
   });
 });
+
+
+describe('兼容中文引用括号', () => {
+  it('流式保留原文，final 按含 emoji 的 UTF-16 偏移和支持状态渲染', () => {
+    const answer = '😀结论【1】和[2]，未知【99】。`arr[1]【1】`';
+    const citation = (mark: string, n: number, state: string): Citation => ({
+      n, state, start: answer.indexOf(mark), end: answer.indexOf(mark) + mark.length,
+    });
+    expect(renderAnswer(answer)).toContain('结论【1】和[2]');
+    const html = renderAnswer(answer, {
+      citations: [citation('【1】', 1, 'unsupported'), citation('[2]', 2, 'ok'), citation('【99】', 99, 'invalid_number')],
+      sources: [{ cite: 1 }, { cite: 2 }],
+    });
+    expect(html).toContain('😀结论<sup><a class="cite cite-grey"');
+    expect(html).toContain('data-hint="未能在该资料中核实"');
+    expect(html).toContain('data-cite="2"');
+    expect(html).toContain('data-hint="引用编号无效"');
+    expect(html).toContain('<code>arr[1]【1】</code>');
+    expect(answer).toContain('😀结论【1】');
+  });
+
+  it.each(['【1]', '[1】', '【1234】', '【 1 】'])('错误格式 %s 不按引用渲染', (mark) => {
+    const html = renderAnswer(mark, { citations: [{ n: 1, start: 0, end: mark.length, state: 'ok' }] });
+    expect(html).toContain(mark);
+    expect(html).not.toContain('data-cite');
+  });
+});

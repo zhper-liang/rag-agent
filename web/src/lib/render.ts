@@ -18,7 +18,7 @@ export const GREY: Record<string, string> = {
 
 const DOC_ID = /^[0-9a-f]{16}$/;
 export const IMAGE_URL = /^\/api\/images\/[0-9a-f]{16}\/v[1-9]\d*\/[^/?#]+$/;
-const CITE_TEXT = /^\[\d{1,3}\]$/;
+const CITE_TEXT = /^(?:\[\d{1,3}\]|【\d{1,3}】)$/;
 // 私有区字符做占位：引用 U+E000+i、行内代码 U+E800+i、行内公式 U+F000+i。原文里的同区字符先删掉。
 const range = (lo: number, hi: number) => new RegExp(`[${String.fromCharCode(lo)}-${String.fromCharCode(hi)}]`, 'g');
 const MARKS = range(0xe000, 0xf8ff);
@@ -71,7 +71,7 @@ interface Ctx {
   doc?: { docId: string; version: number };
 }
 
-// 把 [start,end) 内的引用换成占位符；位置对不上 `[n]` 的引用保持原文，不猜。
+// 把 [start,end) 内的引用换成占位符；位置对不上 `[n]` / `【n】` 的引用保持原文，不猜。
 function markCitations(text: string, citations: Citation[], start: number, end: number) {
   const list: Citation[] = [];
   let out = '';

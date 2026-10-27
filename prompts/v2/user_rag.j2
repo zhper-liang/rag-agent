@@ -1,0 +1,20 @@
+{%- if scope_note %}
+<scope>{{ scope_note | esc }}</scope>
+{% endif -%}
+<documents>
+{%- for b in blocks %}
+<document cite="{{ b.cite }}" title="{{ b.title | attr }}" section="{{ b.section_path | attr }}"
+{%- if b.page_start >= 0 %} pages="{{ b.page_start }}{% if b.page_end != b.page_start %}-{{ b.page_end }}{% endif %}"{% endif %}>
+{{ b.text | esc }}
+{%- for img in b.images %}
+[图: {{ img.caption | esc }}]
+{%- if img.send_original %}{{ image_marker(img) }}{% endif %}
+{%- endfor %}
+</document>
+{%- endfor %}
+</documents>
+引用格式提醒：事实引用只写当前 document 的 cite 编号，例如 [1][3]；不写标题或其他引用标记。
+<question>{{ question | esc }}</question>
+{%- if standalone %}
+<standalone>{{ standalone | esc }}</standalone>
+{%- endif %}

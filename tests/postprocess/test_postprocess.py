@@ -119,7 +119,7 @@ def test_windows_best_score_pairs_limit_and_warning(cfg):
 
     async def score(pairs):
         seen.extend(pairs)
-        return [.1, .9, .1, .1]
+        return [.1, .1, .9, .1]
 
     asyncio.run(check_support(sents, {1: block()}, chunks, score, cfg.postprocess))
     assert len(seen) == 4
@@ -181,3 +181,157 @@ def test_sources_sorted_only_used_and_answer_never_changed(cfg):
     assert final['sources'][0]['pages'] == '2-3'
     assert final['notice'] == cfg.postprocess.notices.unsupported
     assert stats['warned']
+
+
+@pytest.mark.parametrize('mark', ['[1]', '【1】'])
+def test_compatible_citations_preserve_spans_and_code(cfg, mark):
+    text = f'😀服务默认使用端口19530。{mark}[1]【1】第二句【99】。\n`arr[1]【1】`\n~~~text\n【1】\n~~~'
+    sents = parse(text, cfg)
+    cites = [c for s in sents for c in s.cites]
+    assert [c['n'] for c in cites] == [1, 1, 1, 99]
+    assert [text[c['start']:c['end']] for c in cites] == [mark, '[1]', '【1】', '【99】']
+    assert sents[0].claim == '😀服务默认使用端口19530。'
+    assert len(sents[0].cites) == 3
+    assert cites[-1]['state'] == 'invalid_number'
+    assert make_plain(text, sents, 'ok', cfg.postprocess).endswith('`arr[1]【1】`\n~~~text\n【1】\n~~~')
+
+
+@pytest.mark.parametrize('mark', ['【1]', '[1】', '【1234】', '【 1 】', '【1,2】', '【1'])
+def test_malformed_compatible_citations_not_recognized(cfg, mark):
+    assert not any(s.cites for s in parse(f'事实{mark}。', cfg))
+
+
+@pytest.mark.parametrize('score,expected', [(0., 'unsupported'), (.8, 'ok')])
+def test_compatible_final_still_checks_support_and_preserves_answer(cfg, score, expected):
+    answer = '😀服务默认使用端口19530【1】。\n' + cfg.prompt.supplement_heading + '\n补充【99】。`arr[1]【1】`'
+    state = dict(intent='rag', answer=answer, context_blocks=[block().model_dump()])
+    original = copy.deepcopy(state)
+    calls = []
+
+    async def rerank(pairs):
+        calls.extend(pairs)
+        return [score] * len(pairs)
+
+    final, plain, stats = asyncio.run(build_final(state, cfg, rerank))
+    assert state == original
+    assert calls and all('【1】' not in claim for claim, _ in calls)
+    first, supplement = final['citations']
+    assert first['state'] == expected and first['score'] == score
+    assert supplement['state'] == 'in_supplement'
+    assert stats['citation_support'] == (1. if expected == 'ok' else 0.)
+    assert final['notice'] == (cfg.postprocess.notices.unsupported if expected == 'unsupported' else None)
+    assert final['supplement']['start'] == utf16_offset(answer, answer.index('**'))
+    for c, mark in zip(final['citations'], ['【1】', '【99】'], strict=True):
+        assert answer.encode('utf-16-le')[2*c['start']:2*c['end']].decode('utf-16-le') == mark
+    assert plain == answer.replace('【1】', '', 1).replace('【99】', '')
+
+
+def test_compatible_history_and_eval_cleaning(cfg):
+    from ragagent.prompt.history import strip_old_citations
+    from eval.ragas_eval import clean_answer
+
+    answer = '事实[1]【2】。`arr[1]【2】`\n' + cfg.prompt.supplement_heading + '\n补充【3】。'
+    assert strip_old_citations(answer) == '事实。`arr[1]【2】`\n' + cfg.prompt.supplement_heading + '\n补充。'
+    assert clean_answer(answer, cfg.prompt.supplement_heading) == '事实。`arr[1]【2】`'
+
+
+def test_support_claim_preserves_inline_code_and_ignores_code_citations(cfg):
+    answer = '😀函数 `get_weather(city="北京")` 返回 `data[1]` 与 `status_code`【1】。'
+    seen = []
+
+    async def score(pairs):
+        seen.extend(pairs)
+        return [.8] * len(pairs)
+
+    final, plain, _ = asyncio.run(build_final(
+        dict(intent='rag', answer=answer, context_blocks=[block().model_dump()]), cfg, score))
+    assert seen and seen[0][0] == '😀函数 get_weather(city="北京") 返回 data[1] 与 status_code。'
+    assert len(final['citations']) == 1
+    cite = final['citations'][0]
+    assert answer.encode('utf-16-le')[2*cite['start']:2*cite['end']].decode('utf-16-le') == '【1】'
+    assert plain == answer.replace('【1】', '')
+
+
+def test_claim_excludes_fenced_code_but_keeps_inline_punctuation(cfg):
+    answer = '若出现 `ToolError`，返回 `status="error"` 和 `str(e)`[1]。\n~~~py\nsecret[9]\n~~~\n`a; b[8]` 是表达式[1]。'
+    sents = parse(answer, cfg)
+    assert sents[0].claim == '若出现 ToolError，返回 status="error" 和 str(e)。'
+    assert sents[-1].claim == 'a; b[8] 是表达式。'
+    assert [c['n'] for s in sents for c in s.cites] == [1, 1]
+    assert all('secret' not in s.claim for s in sents)
+
+
+def test_claim_handles_multibacktick_and_multiline_inline_code(cfg):
+    text = '表达式 ``a`b[7]`` 返回 `x_1\n+ y_2`[1]。'
+    sents = parse(text, cfg)
+    assert 'a`b[7]' in sents[0].claim
+    assert 'x_1' in sents[0].claim
+    assert sents[-1].claim == '+ y_2。'
+    assert [c['n'] for s in sents for c in s.cites] == [1]
+
+
+def test_inline_delimiters_do_not_pair_across_fenced_blocks(cfg):
+    text = '未闭合的 `标记。\n~~~py\nsecret[9]\n~~~\n恢复正文 `status_code` 正常[1]。'
+    sents = parse(text, cfg)
+    assert sents[-1].claim == '恢复正文 status_code 正常。'
+    assert all('secret' not in s.claim for s in sents)
+    assert [c['n'] for s in sents for c in s.cites] == [1]
+
+
+def test_verification_round_robin_and_incomplete_negative(cfg):
+    limited = cfg.postprocess.model_copy(update={'max_pairs': 2})
+    sents = parse('服务默认使用端口19530[1]。另一个默认端口是5432[1]。', cfg)
+    seen = []
+    async def scores(pairs):
+        seen.extend(pairs)
+        return [.1, .9]
+    chunks = {'c1': '第一个窗口', 'c2': '第二个窗口'}
+    asyncio.run(check_support(sents, {1: block()}, chunks, scores, limited))
+    assert len(seen) == 2 and seen[0][0] != seen[1][0]
+    assert sents[0].cites[0]['state'] == 'unverified'
+    assert sents[1].cites[0]['state'] == 'ok'
+
+
+def test_code_entity_from_question_qualifies_verification_claim(cfg):
+    sents = parse('默认生成3个候选动作[1]。', cfg)
+    seen = []
+    async def scores(pairs):
+        seen.extend(pairs)
+        return [.8] * len(pairs)
+    asyncio.run(check_support(sents, {1: block()}, {}, scores, cfg.postprocess,
+                             question='expand_candidates默认生成几个候选动作？'))
+    assert seen[0][0] == 'expand_candidates：默认生成3个候选动作。'
+    assert sents[0].claim == '默认生成3个候选动作。'
+
+@pytest.mark.parametrize('mark,kind', [
+    ('【1:手册】', 'number_with_title'),
+    ('【手册:】', 'title_without_number'),
+    ('citeturn1', 'foreign_marker'),
+])
+def test_malformed_citations_are_reported_without_mapping(cfg, mark, kind):
+    from ragagent.postprocess.parse import citation_format_issues
+    text = f'事实{mark}。`{mark}`\n```text\n{mark}\n```'
+    issues = citation_format_issues(mask_code(text), {1: block()})
+    assert issues == [dict(kind=kind, text=mark, start=2, end=2 + len(mark))]
+    assert not any(s.cites for s in parse(text, cfg))
+
+
+def test_ordinary_brackets_and_valid_numbers_are_not_syntax_issues():
+    from ragagent.postprocess.parse import citation_format_issues
+    assert citation_format_issues('【重点】、[1]、【1】、【普通说明】', {1: block()}) == []
+
+
+@pytest.mark.parametrize('answer,expected', [
+    ('资料未提供该信息。', 'missing'),
+    ('事实【1:手册】。', 'invalid_syntax'),
+    ('事实[99]。', 'invalid_number'),
+    ('事实[1]。', 'ok'),
+])
+def test_final_distinguishes_citation_format_states(cfg, answer, expected):
+    async def scores(pairs):
+        return [1.] * len(pairs)
+    event, _, stats = asyncio.run(build_final(dict(answer=answer, context_blocks=[block().model_dump()],
+        gen_meta=dict(scene='rag', status='ok')), cfg, scores))
+    assert stats['citation_format_status'] == expected
+    assert bool(stats['citation_format_issues']) == (expected == 'invalid_syntax')
+    assert all(c['n'] != 99 or c['state'] == 'invalid_number' for c in event['citations'])
